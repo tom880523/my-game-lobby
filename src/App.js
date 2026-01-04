@@ -3,13 +3,13 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, 
-  arrayUnion, increment, arrayRemove 
+  arrayUnion, increment, arrayRemove, runTransaction 
 } from 'firebase/firestore';
 import { 
   Users, Play, Settings, Plus, Check, X, 
   Shuffle, AlertCircle, ClipboardCopy, Trophy, 
   Gamepad2, ArrowLeft, Construction, LogOut, Trash2, Crown,
-  Eye, EyeOff // <--- 新增這兩個 Import
+  Eye, EyeOff
 } from 'lucide-react';
 
 // =================================================================
@@ -37,50 +37,22 @@ try {
   initError = e.message;
 }
 
-// --- 超大題庫 (擴充版) ---
+// --- 預設超大題庫 (精選多樣化題目) ---
 const DEFAULT_WORDS_LARGE = [
-  // 食物與飲料
-  "珍珠奶茶", "臭豆腐", "牛肉麵", "小籠包", "滷肉飯", "雞排", "鳳梨酥", "火鍋", "生魚片", "披薩",
-  "漢堡", "薯條", "冰淇淋", "巧克力", "西瓜", "香蕉", "榴槤", "苦瓜", "荷包蛋", "爆米花",
-  "芒果冰", "蚵仔煎", "豬血糕", "大腸包小腸", "潤餅", "肉圓", "太陽餅", "鐵蛋", "豆花", "燒仙草",
-  "珍珠", "椰果", "布丁", "蛋糕", "甜甜圈", "馬卡龍", "提拉米蘇", "可麗餅", "鬆餅", "蛋塔",
-  "咖啡", "可樂", "雪碧", "牛奶", "豆漿", "米漿", "柳橙汁", "蘋果汁", "紅茶", "綠茶",
-  // 地點與地標
-  "台北101", "夜市", "迪士尼樂園", "便利商店", "動物園", "機場", "醫院", "學校", "圖書館", "電影院",
-  "健身房", "游泳池", "外太空", "金字塔", "萬里長城", "艾菲爾鐵塔", "自由女神", "北極", "鬼屋", "監獄",
-  "博物館", "美術館", "遊樂園", "水族館", "菜市場", "百貨公司", "警察局", "消防局", "郵局", "銀行",
-  "加油站", "停車場", "公車站", "火車站", "捷運站", "高鐵站", "飛機上", "船上", "潛水艇", "太空船",
-  "火星", "月球", "沙漠", "叢林", "海邊", "山上", "洞穴", "瀑布", "火山", "冰山",
-  // 動作與日常
-  "刷牙", "洗澡", "化妝", "自拍", "打噴嚏", "剪指甲", "伏地挺身", "騎腳踏車", "開車", "釣魚",
-  "打棒球", "打籃球", "踢足球", "游泳", "溜滑梯", "盪鞦韆", "放風箏", "求婚", "吵架", "偷看",
-  "打蚊子", "穿針引線", "舉重", "拔河", "相撲", "衝浪", "滑雪", "彈吉他", "打鼓", "指揮交通",
-  "洗碗", "拖地", "洗衣服", "曬衣服", "摺衣服", "煮飯", "切菜", "炒菜", "倒垃圾", "遛狗",
-  "睡覺", "打呼", "做夢", "伸懶腰", "打哈欠", "流口水", "挖鼻孔", "掏耳朵", "抓癢", "按摩",
-  "看電視", "玩手機", "打電動", "看書", "寫字", "畫畫", "唱歌", "跳舞", "聽音樂", "戴耳機",
+  // 經典食物
+  "珍珠奶茶", "臭豆腐", "牛肉麵", "小籠包", "滷肉飯", "雞排", "鳳梨酥", "火鍋", "生魚片", "披薩", "漢堡", "薯條", "冰淇淋", "巧克力", "西瓜", "香蕉", "榴槤", "苦瓜", "荷包蛋", "爆米花", "芒果冰", "蚵仔煎", "豬血糕", "大腸包小腸", "潤餅", "肉圓", "太陽餅", "鐵蛋", "豆花", "燒仙草", "可樂", "咖啡", "壽司", "義大利麵", "牛排",
+  // 知名地標與場所
+  "台北101", "夜市", "迪士尼樂園", "便利商店", "動物園", "機場", "醫院", "學校", "圖書館", "電影院", "健身房", "游泳池", "外太空", "金字塔", "萬里長城", "艾菲爾鐵塔", "自由女神", "北極", "鬼屋", "監獄", "麥當勞", "肯德基", "星巴克", "捷運站", "加油站", "月球", "火星", "沙漠", "玉山", "日月潭",
+  // 生活動作
+  "刷牙", "洗澡", "化妝", "自拍", "打噴嚏", "剪指甲", "伏地挺身", "騎腳踏車", "開車", "釣魚", "打棒球", "打籃球", "踢足球", "游泳", "溜滑梯", "盪鞦韆", "放風箏", "求婚", "吵架", "偷看", "打蚊子", "穿針引線", "舉重", "拔河", "相撲", "衝浪", "滑雪", "彈吉他", "打鼓", "指揮交通", "煮飯", "洗碗", "遛狗", "睡覺", "打呼",
   // 動物與生物
-  "大象", "長頸鹿", "企鵝", "猴子", "猩猩", "袋鼠", "無尾熊", "熊貓", "獅子", "老虎",
-  "豬", "狗", "貓", "雞", "鴨子", "青蛙", "烏龜", "蛇", "蜘蛛", "暴龍",
-  "鱷魚", "河馬", "犀牛", "斑馬", "駱駝", "草泥馬", "狐狸", "兔子", "老鼠", "松鼠",
-  "海豚", "鯨魚", "鯊魚", "章魚", "烏賊", "海馬", "水母", "海星", "螃蟹", "蝦子",
-  "螞蟻", "蜜蜂", "蝴蝶", "蜻蜓", "蟑螂", "蚊子", "蒼蠅", "獨角仙", "螢火蟲", "毛毛蟲",
+  "大象", "長頸鹿", "企鵝", "猴子", "猩猩", "袋鼠", "無尾熊", "熊貓", "獅子", "老虎", "豬", "狗", "貓", "雞", "鴨子", "青蛙", "烏龜", "蛇", "蜘蛛", "暴龍", "鱷魚", "河馬", "犀牛", "斑馬", "駱駝", "草泥馬", "狐狸", "兔子", "老鼠", "松鼠", "海豚", "鯨魚", "鯊魚", "章魚", "水母",
   // 角色與職業
-  "鋼鐵人", "蜘蛛人", "皮卡丘", "哆啦A夢", "瑪利歐", "殭屍", "吸血鬼", "聖誕老公公", "外星人", "忍者",
-  "醫生", "護士", "警察", "消防員", "老師", "學生", "廚師", "司機", "空姐", "機師",
-  "畫家", "歌手", "演員", "魔術師", "小丑", "總統", "太空人", "科學家", "偵探", "小偷",
-  "海盜", "牛仔", "其實", "公主", "王子", "國王", "皇后台", "女巫", "超人", "蝙蝠俠",
-  "美國隊長", "雷神索爾", "綠巨人浩克", "黑寡婦", "奇異博士", "哈利波特", "魯夫", "鳴人", "悟空", "柯南",
-  // 物品與工具
-  "手機", "電腦", "吹風機", "雨傘", "馬桶", "衛生紙", "遙控器", "麥克風", "眼鏡", "口罩",
-  "手錶", "戒指", "項鍊", "耳環", "帽子", "圍巾", "手套", "襪子", "鞋子", "背包",
-  "牙刷", "牙膏", "毛巾", "肥皂", "洗髮精", "沐浴乳", "掃把", "拖把", "吸塵器", "垃圾桶",
-  "剪刀", "美工刀", "膠帶", "膠水", "釘書機", "原子筆", "鉛筆", "橡皮擦", "尺", "筆記本",
-  "電風扇", "冷氣", "冰箱", "電視", "洗衣機", "微波爐", "烤箱", "電鍋", "熱水瓶", "吹風機",
-  // 成語與俗語 (進階題)
-  "畫蛇添足", "對牛彈琴", "一石二鳥", "井底之蛙", "守株待兔", "掩耳盜鈴", "狐假虎威", "盲人摸象", "杯弓蛇影", "刻舟求劍",
-  "雞飛狗跳", "狼吞虎嚥", "龍飛鳳舞", "鶴立雞群", "雞同鴨講", "狗急跳牆", "打草驚蛇", "殺雞儆猴", "如魚得水", "沉魚落雁",
-  "三頭六臂", "七上八下", "五花大門", "一刀兩斷", "三心二意", "四面楚歌", "五體投地", "六神無主", "七嘴八舌", "九牛一毛"
-  // ... 可以自行持續擴充
+  "鋼鐵人", "蜘蛛人", "皮卡丘", "哆啦A夢", "瑪利歐", "殭屍", "吸血鬼", "聖誕老公公", "外星人", "忍者", "醫生", "護士", "警察", "消防員", "老師", "學生", "廚師", "司機", "空姐", "機師", "畫家", "歌手", "演員", "魔術師", "小丑", "總統", "太空人", "科學家", "偵探", "小偷", "海盜", "牛仔", "騎士", "公主", "王子",
+  // 日常用品
+  "手機", "電腦", "吹風機", "雨傘", "馬桶", "衛生紙", "遙控器", "麥克風", "眼鏡", "口罩", "手錶", "戒指", "項鍊", "背包", "牙刷", "電風扇", "冷氣", "冰箱", "電視", "洗衣機", "微波爐", "筷子", "湯匙", "安全帽", "鑰匙",
+  // 成語與抽象
+  "畫蛇添足", "對牛彈琴", "一石二鳥", "井底之蛙", "守株待兔", "掩耳盜鈴", "狐假虎威", "盲人摸象", "雞飛狗跳", "七上八下", "三頭六臂", "心碎", "開心", "憤怒", "緊張", "害怕", "尷尬", "無聊", "驚喜"
 ];
 
 // --- 錯誤邊界 ---
@@ -165,7 +137,7 @@ function GameLobby({ onSelectGame }) {
                   <Users className="text-white w-8 h-8" />
                </div>
                <h2 className="text-2xl font-bold mb-2 text-white">比手畫腳大亂鬥</h2>
-               <p className="text-slate-400 text-sm">經典派對遊戲！內建超大題庫、支援搶答、自訂題目與即時計分。</p>
+               <p className="text-slate-400 text-sm">經典派對遊戲！內建豐富題庫、支援搶答、自訂題目與即時計分。</p>
              </div>
              <div className="flex items-center gap-2 text-indigo-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
                 進入遊戲 <ArrowLeft className="rotate-180" size={16}/>
@@ -189,7 +161,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.1 Stable</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.2 Transaction Fix</footer>
     </div>
   );
 }
@@ -230,7 +202,8 @@ function CharadesGame({ onBack }) {
         const data = docSnap.data();
         setRoomData(data);
         
-        const amIInRoom = data.players.some(p => p.id === user.uid);
+        // 檢查自己是否在房間內
+        const amIInRoom = data.players && data.players.some(p => p.id === user.uid);
         if (!amIInRoom && view !== 'lobby') {
            alert("你已被踢出房間或房間已重置");
            setView('lobby');
@@ -269,50 +242,67 @@ function CharadesGame({ onBack }) {
       setView('room');
     } catch (e) {
       console.error(e);
-      alert("建立失敗");
+      alert("建立失敗: " + e.message);
     }
     setLoading(false);
   };
 
+  // ★★★ 修復：使用 Transaction 確保多人加入不衝突 ★★★
   const joinRoom = async () => {
     if (!playerName.trim() || !roomId.trim()) return alert("請輸入資料");
     setLoading(true);
     try {
       const rId = roomId.toUpperCase();
-      const ref = doc(db, 'rooms', `room_${rId}`);
-      const snap = await getDoc(ref);
-      
-      if (snap.exists()) {
-        const data = snap.data();
+      const roomRef = doc(db, 'rooms', `room_${rId}`);
+
+      await runTransaction(db, async (transaction) => {
+        const roomDoc = await transaction.get(roomRef);
+        if (!roomDoc.exists()) {
+          throw new Error("房間不存在");
+        }
+
+        const data = roomDoc.data();
         const currentPlayers = data.players || [];
-        const otherPlayers = currentPlayers.filter(p => p.id !== user.uid);
-        const me = { id: user.uid, name: playerName, team: null, isHost: false };
         
-        await updateDoc(ref, { players: [...otherPlayers, me] });
+        // 檢查使用者是否已存在 (依據 UID)
+        const playerIndex = currentPlayers.findIndex(p => p.id === user.uid);
         
-        setRoomId(rId);
-        setView('room');
-      } else {
-        alert("房間不存在");
-      }
+        const newPlayer = { id: user.uid, name: playerName, team: null, isHost: false };
+        let newPlayersList;
+
+        if (playerIndex >= 0) {
+          // 如果已存在，更新名字 (這也是為什麼你之前覺得沒加進去，因為可能只是名字更新了)
+          newPlayersList = [...currentPlayers];
+          newPlayersList[playerIndex] = { ...newPlayersList[playerIndex], name: playerName };
+        } else {
+          // 如果是新玩家，加入陣列
+          newPlayersList = [...currentPlayers, newPlayer];
+        }
+
+        transaction.update(roomRef, { players: newPlayersList });
+      });
+
+      setRoomId(rId);
+      setView('room');
     } catch (e) {
       console.error(e);
-      alert("加入失敗");
+      alert("加入失敗: " + e.message);
     }
     setLoading(false);
   };
 
   const leaveRoom = async () => {
-    // FIX: 使用 window.confirm 避免 ESLint 錯誤
     if (!window.confirm("確定離開房間？")) return;
     
     try {
       const ref = doc(db, 'rooms', `room_${roomId}`);
+      // 使用 Filter 來移除自己
       const newPlayers = roomData.players.filter(p => p.id !== user.uid);
       
       if (newPlayers.length === 0) {
          await updateDoc(ref, { players: [] }); 
       } else {
+         // 如果我是房主，移交權限
          if (roomData.hostId === user.uid) {
              await updateDoc(ref, { 
                  players: newPlayers,
@@ -406,6 +396,7 @@ function CharadesGame({ onBack }) {
           {view === 'room' && <RoomView 
             roomData={roomData} isHost={isHost} roomId={roomId} currentUser={user}
             onStart={async () => {
+             // 確保題庫夠大：複製一份預設題庫 + 自訂題庫
              const allWords = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(() => 0.5 - Math.random());
              await updateDoc(doc(db, 'rooms', `room_${roomId}`), {
                status: 'playing', wordQueue: allWords, scores: { A: 0, B: 0 },
@@ -448,10 +439,9 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   const players = roomData.players || [];
   const teamA = players.filter(p => p.team === 'A');
   const teamB = players.filter(p => p.team === 'B');
-  const unassigned = players.filter(p => !p.team); // 找出還沒分組的人
+  const unassigned = players.filter(p => !p.team); 
   
   const randomize = async () => {
-    // 重新分組邏輯：對「所有玩家」進行洗牌分配
     const shuffled = [...players].sort(() => 0.5 - Math.random());
     const mid = Math.ceil(shuffled.length / 2);
     const newPlayers = shuffled.map((p, i) => ({ ...p, team: i < mid ? 'A' : 'B' }));
@@ -459,7 +449,6 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   };
 
   const kickPlayer = async (targetId) => {
-      // FIX: 使用 window.confirm 避免 ESLint 錯誤
       if(!window.confirm("確定要踢出這位玩家嗎？")) return;
       const newPlayers = players.filter(p => p.id !== targetId);
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { players: newPlayers });
@@ -492,15 +481,17 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                 {isHost && <button onClick={randomize} className="text-sm bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full hover:bg-indigo-100 font-bold transition flex items-center gap-1"><Shuffle size={14}/> 隨機分組</button>}
             </div>
 
-            {/* 未分組區域 */}
-            {unassigned.length > 0 && (
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 border-dashed">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">等待分組</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                        {unassigned.map(p => <PlayerItem key={p.id} p={p} />)}
-                    </div>
+            {/* 未分組區域 (特別顯眼) */}
+            <div className={`bg-slate-50 p-3 rounded-xl border border-dashed transition-colors ${unassigned.length>0 ? 'border-orange-300 bg-orange-50' : 'border-slate-200'}`}>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex justify-between">
+                    <span>等待分組</span>
+                    <span className="bg-slate-200 px-2 rounded-full text-slate-600">{unassigned.length}</span>
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                    {unassigned.length === 0 && <span className="text-slate-400 text-xs italic col-span-2 text-center py-2">所有人皆已分組</span>}
+                    {unassigned.map(p => <PlayerItem key={p.id} p={p} />)}
                 </div>
-            )}
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
                 <div className="bg-red-50/50 p-4 rounded-xl border border-red-100">
@@ -534,7 +525,11 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2 max-h-40 overflow-y-auto">
                     {roomData.customWords?.map((w,i)=><span key={i} className="bg-yellow-50 px-3 py-1 rounded-full text-sm border border-yellow-200 text-yellow-800">{w}</span>)}
-                    {(!roomData.customWords || roomData.customWords.length === 0) && <span className="text-slate-400 text-sm">目前無自訂題目，將使用內建超大題庫。</span>}
+                    {(!roomData.customWords || roomData.customWords.length === 0) && (
+                        <div className="text-slate-400 text-sm bg-slate-50 p-3 rounded-lg w-full text-center border border-slate-100">
+                            已載入內建題庫 ({DEFAULT_WORDS_LARGE.length} 題)
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -571,7 +566,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const updateGame = (data) => updateDoc(doc(db, 'rooms', `room_${roomId}`), data);
   const nextWord = () => {
      let q = [...roomData.wordQueue];
-     // 題庫用完自動補充
      if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
      const w = q.pop();
      updateGame({ wordQueue: q, currentWord: w, turnEndTime: Date.now() + roomData.settings.answerTime*1000 });
@@ -585,7 +579,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
 
   const isSteal = timeLeft > 0 && timeLeft <= roomData.settings.stealTime;
   const showControls = isHost && !previewAsPlayer;
-  // 遮蔽文字邏輯：除了空白字元外，其他都換成問號
   const wordDisplay = showControls ? roomData.currentWord : (roomData.currentWord ? roomData.currentWord.replace(/[^\s]/g, '❓') : "準備中");
 
   return (
@@ -617,7 +610,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
 
        {/* 主遊戲區 */}
        <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 text-center relative">
-          {/* 背景光暈效果 */}
           <div className={`absolute inset-0 bg-gradient-to-b ${roomData.currentTeam==='A' ? 'from-red-900/20' : 'from-blue-900/20'} to-slate-900 pointer-events-none`}></div>
 
           {roomData.gameState === 'idle' ? (
