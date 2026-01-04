@@ -1,0 +1,33 @@
+{
+  "name": "charades-game",
+  "version": "1.0.0",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "firebase": "^10.0.0",
+    "lucide-react": "^0.263.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "browserslist": {
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+  }
+}
+* 建立一個資料夾叫 `public`，裡面放一個 `index.html`：
+```html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>比手畫腳大亂鬥</title>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+* 建立一個資料夾叫 `src`，把上面我寫好的 **`App.js`** (記得填好 Firebase Config) 放進去。
