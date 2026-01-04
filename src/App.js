@@ -3,35 +3,31 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, 
-  arrayUnion, increment, collection 
+  arrayUnion, increment 
 } from 'firebase/firestore';
 import { 
-  Users, Play, Settings, Plus, Check, X, Clock, 
-  Shuffle, AlertCircle, Eye, EyeOff, ClipboardCopy, Trophy, 
+  Users, Play, Settings, Plus, Check, X, 
+  Shuffle, AlertCircle, ClipboardCopy, Trophy, 
   Gamepad2, ArrowLeft, Construction
 } from 'lucide-react';
 
 // =================================================================
-// ★★★ 請在此填入你的 Firebase Config ★★★
+// ★★★ 你的 Firebase Config (已自動填入) ★★★
 // =================================================================
 const firebaseConfig = {
-  // 請把你的 Config 貼在這裡，取代原本的內容
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyA5vgv34lsCJGOgmKhVZzZUp9L0Ut-JdUY",
+  authDomain: "game-lobby-c3225.firebaseapp.com",
+  projectId: "game-lobby-c3225",
+  storageBucket: "game-lobby-c3225.firebasestorage.app",
+  messagingSenderId: "900294983374",
+  appId: "1:900294983374:web:696061e1ab31ca49bb5a9f"
 };
 
-// --- Firebase 初始化 (增加防呆) ---
+// --- Firebase 初始化 ---
 let app, auth, db;
 let initError = "";
 
 try {
-  if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
-    throw new Error("請打開 src/App.js 填入正確的 Firebase Config");
-  }
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
@@ -40,7 +36,7 @@ try {
   initError = e.message;
 }
 
-// --- 全局錯誤邊界 (防止白畫面) ---
+// --- 錯誤邊界 ---
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -54,7 +50,7 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="p-8 text-center text-red-600 bg-red-50 min-h-screen flex flex-col items-center justify-center">
           <AlertCircle size={48} className="mb-4" />
-          <h1 className="text-2xl font-bold mb-2">發生錯誤 (White Screen Fix)</h1>
+          <h1 className="text-2xl font-bold mb-2">發生錯誤</h1>
           <pre className="text-left bg-white p-4 rounded border border-red-200 overflow-auto max-w-lg">
             {this.state.error.toString()}
           </pre>
@@ -68,7 +64,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// --- 主程式進入點 ---
+// --- 主程式 ---
 export default function App() {
   return (
     <ErrorBoundary>
@@ -78,7 +74,6 @@ export default function App() {
 }
 
 function MainApp() {
-  // 狀態: 'home' (大廳) | 'charades' (比手畫腳)
   const [currentApp, setCurrentApp] = useState('home');
 
   if (initError) {
@@ -86,28 +81,19 @@ function MainApp() {
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
         <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2">Firebase 設定未完成</h2>
+          <h2 className="text-xl font-bold mb-2">Firebase 設定錯誤</h2>
           <p className="text-gray-600 mb-4">{initError}</p>
-          <div className="text-xs text-left bg-gray-50 p-2 rounded text-gray-500 font-mono">
-            請打開 src/App.js，找到 firebaseConfig 區塊並填入你的設定。
-          </div>
         </div>
       </div>
     );
   }
 
-  if (currentApp === 'home') {
-    return <GameLobby onSelectGame={setCurrentApp} />;
-  }
-
-  if (currentApp === 'charades') {
-    return <CharadesGame onBack={() => setCurrentApp('home')} />;
-  }
-
+  if (currentApp === 'home') return <GameLobby onSelectGame={setCurrentApp} />;
+  if (currentApp === 'charades') return <CharadesGame onBack={() => setCurrentApp('home')} />;
   return null;
 }
 
-// --- 1. 遊戲大廳 (Game Lobby) ---
+// --- 1. 大廳 ---
 function GameLobby({ onSelectGame }) {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6 flex flex-col items-center">
@@ -117,59 +103,34 @@ function GameLobby({ onSelectGame }) {
             線上派對遊戲中心
          </h1>
       </header>
-
       <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-4xl">
-        {/* 遊戲卡片 1: 比手畫腳 */}
         <button 
           onClick={() => onSelectGame('charades')}
           className="group relative bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl p-1 overflow-hidden hover:scale-105 transition-all duration-300 text-left"
         >
-          <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-10 transition-opacity" />
           <div className="bg-gray-900/20 backdrop-blur-sm h-full rounded-xl p-6 flex flex-col justify-between min-h-[200px]">
              <div>
-               <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center mb-4">
-                  <Users className="text-white w-6 h-6" />
-               </div>
+               <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center mb-4"><Users className="text-white w-6 h-6" /></div>
                <h2 className="text-2xl font-bold mb-2">比手畫腳大亂鬥</h2>
-               <p className="text-gray-300 text-sm">經典派對遊戲！分組對抗，支援搶答、自訂題目與即時計分。</p>
+               <p className="text-gray-300 text-sm">支援搶答、自訂題目與即時計分。</p>
              </div>
-             <div className="flex items-center gap-2 text-indigo-300 font-bold mt-4">
-                進入遊戲 <ArrowLeft className="rotate-180" size={16}/>
-             </div>
+             <div className="flex items-center gap-2 text-indigo-300 font-bold mt-4">進入遊戲 <ArrowLeft className="rotate-180" size={16}/></div>
           </div>
         </button>
-
-        {/* 遊戲卡片 2: 待開發 */}
         <div className="bg-gray-800 rounded-2xl p-6 flex flex-col justify-between min-h-[200px] opacity-60 border border-gray-700">
            <div>
-             <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center mb-4">
-                <Construction className="text-gray-500 w-6 h-6" />
-             </div>
+             <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center mb-4"><Construction className="text-gray-500 w-6 h-6" /></div>
              <h2 className="text-xl font-bold text-gray-500 mb-2">間諜家家酒</h2>
-             <p className="text-gray-600 text-sm">誰是臥底？開發中，敬請期待...</p>
-           </div>
-        </div>
-
-        {/* 遊戲卡片 3: 待開發 */}
-        <div className="bg-gray-800 rounded-2xl p-6 flex flex-col justify-between min-h-[200px] opacity-60 border border-gray-700">
-           <div>
-             <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center mb-4">
-                <Construction className="text-gray-500 w-6 h-6" />
-             </div>
-             <h2 className="text-xl font-bold text-gray-500 mb-2">你畫我猜</h2>
-             <p className="text-gray-600 text-sm">靈魂繪師大顯身手。開發中...</p>
+             <p className="text-gray-600 text-sm">開發中...</p>
            </div>
         </div>
       </main>
-      
-      <footer className="mt-auto pt-12 text-gray-600 text-sm">
-        Built with React & Firebase
-      </footer>
+      <footer className="mt-auto pt-12 text-gray-600 text-sm">v1.2</footer>
     </div>
   );
 }
 
-// --- 2. 比手畫腳主程式 (Charades) ---
+// --- 2. 遊戲主邏輯 ---
 const DEFAULT_SETTINGS = {
   answerTime: 30, stealTime: 10, roundDuration: 600, totalRounds: 2, 
   pointsCorrect: 3, pointsSkip: -1, startTeam: 'A'
@@ -179,28 +140,23 @@ const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperC
 
 function CharadesGame({ onBack }) {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('lobby'); // lobby, room, game, result
+  const [view, setView] = useState('lobby');
   const [roomId, setRoomId] = useState('');
   const [playerName, setPlayerName] = useState('');
   const [roomData, setRoomData] = useState(null);
-  const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  
-  // Settings
   const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
 
-  // Auth
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       if (u) setUser(u);
-      else signInAnonymously(auth).catch(e => console.error(e));
+      else signInAnonymously(auth).catch(console.error);
     });
     return () => unsubscribe();
   }, []);
 
-  // Room Listener
   useEffect(() => {
     if (!user || !roomId) return;
     const unsubscribe = onSnapshot(doc(db, 'rooms', `room_${roomId}`), (docSnap) => {
@@ -211,7 +167,7 @@ function CharadesGame({ onBack }) {
         if (data.status === 'finished' && view === 'game') setView('result');
         if (data.status === 'waiting' && (view === 'game' || view === 'result')) setView('room');
       } else if (view !== 'lobby') {
-        alert("房間已關閉或不存在");
+        alert("房間不存在");
         setView('lobby');
         setRoomData(null);
       }
@@ -219,7 +175,6 @@ function CharadesGame({ onBack }) {
     return () => unsubscribe();
   }, [user, roomId, view]);
 
-  // Actions
   const createRoom = async () => {
     if (!playerName.trim()) return alert("請輸入名字");
     setLoading(true);
@@ -236,7 +191,7 @@ function CharadesGame({ onBack }) {
       setView('room');
     } catch (e) {
       console.error(e);
-      alert("建立房間失敗: " + e.message);
+      alert("建立失敗");
     }
     setLoading(false);
   };
@@ -255,9 +210,7 @@ function CharadesGame({ onBack }) {
         }
         setRoomId(rId);
         setView('room');
-      } else {
-        alert("房間不存在");
-      }
+      } else alert("房間不存在");
     } catch (e) {
       console.error(e);
       alert("加入失敗");
@@ -265,17 +218,20 @@ function CharadesGame({ onBack }) {
     setLoading(false);
   };
 
-  // Views Render
+  const leaveRoom = () => {
+    if (window.confirm("確定離開房間？")) {
+      setView('lobby');
+      setRoomId('');
+      setRoomData(null);
+    }
+  };
+
   if (view === 'lobby') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full space-y-6 relative">
-          <button onClick={onBack} className="absolute top-4 left-4 text-gray-400 hover:text-gray-600">
-             <ArrowLeft />
-          </button>
-          <div className="text-center pt-6">
-            <h1 className="text-3xl font-bold text-gray-800">比手畫腳大亂鬥</h1>
-          </div>
+          <button onClick={onBack} className="absolute top-4 left-4 text-gray-400 hover:text-gray-600"><ArrowLeft /></button>
+          <div className="text-center pt-6"><h1 className="text-3xl font-bold text-gray-800">比手畫腳</h1></div>
           <div className="space-y-4">
             <input value={playerName} onChange={e => setPlayerName(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="你的名字" />
             <button onClick={createRoom} disabled={loading || !user} className="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold">建立房間</button>
@@ -283,23 +239,21 @@ function CharadesGame({ onBack }) {
               <input value={roomId} onChange={e => setRoomId(e.target.value.toUpperCase())} className="flex-1 px-4 py-2 border rounded-lg uppercase" placeholder="輸入 ID" />
               <button onClick={joinRoom} disabled={loading || !user} className="px-6 bg-purple-100 text-purple-700 rounded-lg font-bold">加入</button>
             </div>
-            {!user && <p className="text-center text-xs text-gray-400">正在連線伺服器...</p>}
+            {!user && <p className="text-center text-xs text-gray-400">連線中...</p>}
           </div>
         </div>
       </div>
     );
   }
 
-  // Safe Check: Ensure roomData exists before rendering Room/Game
-  if (!roomData) return <div className="p-10 text-center">載入房間資訊中...</div>;
-
+  if (!roomData) return <div className="p-10 text-center">載入中...</div>;
   const isHost = roomData.hostId === user?.uid;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
        <header className="bg-white shadow p-3 flex justify-between items-center z-20">
           <div className="flex items-center gap-2">
-            <button onClick={() => {if(confirm("確定離開房間？")) { setView('lobby'); setRoomId(''); }}}><ArrowLeft size={20} className="text-gray-500"/></button>
+            <button onClick={leaveRoom}><ArrowLeft size={20} className="text-gray-500"/></button>
             <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full font-mono font-bold">ID: {roomData.id}</span>
             <button onClick={() => navigator.clipboard.writeText(roomData.id)}><ClipboardCopy size={16}/></button>
           </div>
@@ -314,30 +268,24 @@ function CharadesGame({ onBack }) {
                currentRound: 1, currentTeam: roomData.settings.startTeam, gameState: 'idle', currentWord: null, roundEndTime: null
              });
           }} />}
-          
           {view === 'game' && <GameInterface roomData={roomData} isHost={isHost} roomId={roomId} previewAsPlayer={previewAsPlayer} setPreviewAsPlayer={setPreviewAsPlayer} />}
-          
-          {view === 'result' && (
-             <div className="flex-1 bg-gray-900 flex items-center justify-center text-white p-4 text-center">
-                <div className="space-y-6">
-                   <Trophy className="w-24 h-24 text-yellow-400 mx-auto"/>
-                   <h1 className="text-4xl font-bold">獲勝：{roomData.scores.A > roomData.scores.B ? 'A 隊' : roomData.scores.A < roomData.scores.B ? 'B 隊' : '平手'}</h1>
-                   <div className="text-2xl">A: {roomData.scores.A} | B: {roomData.scores.B}</div>
-                   {isHost && <button onClick={() => updateDoc(doc(db, 'rooms', `room_${roomId}`), { status: 'waiting', gameState: 'idle' })} className="px-6 py-2 bg-indigo-600 rounded-full">回到房間</button>}
-                </div>
-             </div>
-          )}
+          {view === 'result' && <ResultView roomData={roomData} isHost={isHost} roomId={roomId} />}
        </main>
 
        {showSettings && (
          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white p-6 rounded-2xl w-full max-w-sm space-y-4">
+            <div className="bg-white p-6 rounded-2xl w-full max-w-sm space-y-4 max-h-[90vh] overflow-y-auto">
               <h3 className="font-bold">遊戲設定</h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <label>總輪數</label><input type="number" className="border p-1" value={localSettings.totalRounds} onChange={e=>setLocalSettings({...localSettings, totalRounds: +e.target.value})} />
-                <label>每題秒數</label><input type="number" className="border p-1" value={localSettings.answerTime} onChange={e=>setLocalSettings({...localSettings, answerTime: +e.target.value})} />
-                <label>搶答秒數</label><input type="number" className="border p-1" value={localSettings.stealTime} onChange={e=>setLocalSettings({...localSettings, stealTime: +e.target.value})} />
-                <label>單隊限時</label><input type="number" className="border p-1" value={localSettings.roundDuration} onChange={e=>setLocalSettings({...localSettings, roundDuration: +e.target.value})} />
+                <label>總輪數</label><input type="number" className="border p-1 rounded" value={localSettings.totalRounds} onChange={e=>setLocalSettings({...localSettings, totalRounds: +e.target.value})} />
+                <label>每題秒數</label><input type="number" className="border p-1 rounded" value={localSettings.answerTime} onChange={e=>setLocalSettings({...localSettings, answerTime: +e.target.value})} />
+                <label>搶答秒數</label><input type="number" className="border p-1 rounded" value={localSettings.stealTime} onChange={e=>setLocalSettings({...localSettings, stealTime: +e.target.value})} />
+                <label>單隊限時</label><input type="number" className="border p-1 rounded" value={localSettings.roundDuration} onChange={e=>setLocalSettings({...localSettings, roundDuration: +e.target.value})} />
+                
+                {/* 新增：得分/扣分設定 */}
+                <div className="col-span-2 border-t pt-2 mt-2 font-bold text-gray-500">分數規則</div>
+                <label>答對得分</label><input type="number" className="border p-1 rounded" value={localSettings.pointsCorrect} onChange={e=>setLocalSettings({...localSettings, pointsCorrect: +e.target.value})} />
+                <label>跳過扣分</label><input type="number" className="border p-1 rounded" value={localSettings.pointsSkip} onChange={e=>setLocalSettings({...localSettings, pointsSkip: +e.target.value})} />
               </div>
               <button onClick={async () => { await updateDoc(doc(db, 'rooms', `room_${roomId}`), { settings: localSettings }); setShowSettings(false); }} className="w-full py-2 bg-indigo-600 text-white rounded">儲存</button>
             </div>
@@ -406,7 +354,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   };
   const switchTeam = () => {
      let nextTeam = roomData.currentTeam === 'A' ? 'B' : 'A';
-     let nextRound = roomData.currentRound + (roomData.currentTeam === 'B' ? 1 : 0); // Assuming A starts
+     let nextRound = roomData.currentRound + (roomData.currentTeam === 'B' ? 1 : 0); 
      if(nextRound > roomData.settings.totalRounds) updateGame({ status: 'finished' });
      else updateGame({ currentTeam: nextTeam, currentRound: nextRound, gameState: 'idle', currentWord: null, roundEndTime: null, turnEndTime: null });
   };
@@ -460,4 +408,24 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
        )}
     </div>
   );
+}
+
+function ResultView({roomData, isHost, roomId}) {
+   const winner = roomData.scores.A > roomData.scores.B ? 'A' : roomData.scores.A < roomData.scores.B ? 'B' : '平手';
+   return (
+     <div className="flex-1 bg-gray-900 flex items-center justify-center text-white p-4 text-center">
+        <div className="space-y-6">
+           <Trophy className="w-24 h-24 text-yellow-400 mx-auto animate-bounce"/>
+           <h1 className="text-4xl font-bold">遊戲結束</h1>
+           <div className="text-3xl">
+              獲勝的是：<span className="text-yellow-400 font-black">{winner} 隊</span>
+           </div>
+           <div className="flex gap-8 justify-center text-2xl font-mono bg-gray-800 p-6 rounded-xl">
+              <div className="text-red-400">A: {roomData.scores.A}</div>
+              <div className="text-blue-400">B: {roomData.scores.B}</div>
+           </div>
+           {isHost && <button onClick={() => updateDoc(doc(db, 'rooms', `room_${roomId}`), { status: 'waiting', gameState: 'idle' })} className="px-8 py-3 bg-indigo-600 rounded-full font-bold hover:bg-indigo-500">回到大廳</button>}
+        </div>
+     </div>
+   );
 }
