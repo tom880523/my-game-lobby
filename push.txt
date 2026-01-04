@@ -1,0 +1,3 @@
+git add .
+git commit -m "Update: 更新玩家人數，優化題庫"
+git push

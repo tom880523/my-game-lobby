@@ -8,7 +8,8 @@ import {
 import { 
   Users, Play, Settings, Plus, Check, X, 
   Shuffle, AlertCircle, ClipboardCopy, Trophy, 
-  Gamepad2, ArrowLeft, Construction, LogOut, Trash2, Crown
+  Gamepad2, ArrowLeft, Construction, LogOut, Trash2, Crown,
+  Eye, EyeOff // <--- 新增這兩個 Import
 } from 'lucide-react';
 
 // =================================================================
@@ -36,24 +37,50 @@ try {
   initError = e.message;
 }
 
-// --- 100 題預設題庫 ---
-const DEFAULT_WORDS_100 = [
-  // 食物
+// --- 超大題庫 (擴充版) ---
+const DEFAULT_WORDS_LARGE = [
+  // 食物與飲料
   "珍珠奶茶", "臭豆腐", "牛肉麵", "小籠包", "滷肉飯", "雞排", "鳳梨酥", "火鍋", "生魚片", "披薩",
   "漢堡", "薯條", "冰淇淋", "巧克力", "西瓜", "香蕉", "榴槤", "苦瓜", "荷包蛋", "爆米花",
-  // 地點/地標
+  "芒果冰", "蚵仔煎", "豬血糕", "大腸包小腸", "潤餅", "肉圓", "太陽餅", "鐵蛋", "豆花", "燒仙草",
+  "珍珠", "椰果", "布丁", "蛋糕", "甜甜圈", "馬卡龍", "提拉米蘇", "可麗餅", "鬆餅", "蛋塔",
+  "咖啡", "可樂", "雪碧", "牛奶", "豆漿", "米漿", "柳橙汁", "蘋果汁", "紅茶", "綠茶",
+  // 地點與地標
   "台北101", "夜市", "迪士尼樂園", "便利商店", "動物園", "機場", "醫院", "學校", "圖書館", "電影院",
   "健身房", "游泳池", "外太空", "金字塔", "萬里長城", "艾菲爾鐵塔", "自由女神", "北極", "鬼屋", "監獄",
-  // 動作
+  "博物館", "美術館", "遊樂園", "水族館", "菜市場", "百貨公司", "警察局", "消防局", "郵局", "銀行",
+  "加油站", "停車場", "公車站", "火車站", "捷運站", "高鐵站", "飛機上", "船上", "潛水艇", "太空船",
+  "火星", "月球", "沙漠", "叢林", "海邊", "山上", "洞穴", "瀑布", "火山", "冰山",
+  // 動作與日常
   "刷牙", "洗澡", "化妝", "自拍", "打噴嚏", "剪指甲", "伏地挺身", "騎腳踏車", "開車", "釣魚",
   "打棒球", "打籃球", "踢足球", "游泳", "溜滑梯", "盪鞦韆", "放風箏", "求婚", "吵架", "偷看",
   "打蚊子", "穿針引線", "舉重", "拔河", "相撲", "衝浪", "滑雪", "彈吉他", "打鼓", "指揮交通",
-  // 動物
+  "洗碗", "拖地", "洗衣服", "曬衣服", "摺衣服", "煮飯", "切菜", "炒菜", "倒垃圾", "遛狗",
+  "睡覺", "打呼", "做夢", "伸懶腰", "打哈欠", "流口水", "挖鼻孔", "掏耳朵", "抓癢", "按摩",
+  "看電視", "玩手機", "打電動", "看書", "寫字", "畫畫", "唱歌", "跳舞", "聽音樂", "戴耳機",
+  // 動物與生物
   "大象", "長頸鹿", "企鵝", "猴子", "猩猩", "袋鼠", "無尾熊", "熊貓", "獅子", "老虎",
   "豬", "狗", "貓", "雞", "鴨子", "青蛙", "烏龜", "蛇", "蜘蛛", "暴龍",
-  // 物品/角色
+  "鱷魚", "河馬", "犀牛", "斑馬", "駱駝", "草泥馬", "狐狸", "兔子", "老鼠", "松鼠",
+  "海豚", "鯨魚", "鯊魚", "章魚", "烏賊", "海馬", "水母", "海星", "螃蟹", "蝦子",
+  "螞蟻", "蜜蜂", "蝴蝶", "蜻蜓", "蟑螂", "蚊子", "蒼蠅", "獨角仙", "螢火蟲", "毛毛蟲",
+  // 角色與職業
   "鋼鐵人", "蜘蛛人", "皮卡丘", "哆啦A夢", "瑪利歐", "殭屍", "吸血鬼", "聖誕老公公", "外星人", "忍者",
-  "手機", "電腦", "吹風機", "雨傘", "馬桶", "衛生紙", "遙控器", "麥克風", "眼鏡", "口罩"
+  "醫生", "護士", "警察", "消防員", "老師", "學生", "廚師", "司機", "空姐", "機師",
+  "畫家", "歌手", "演員", "魔術師", "小丑", "總統", "太空人", "科學家", "偵探", "小偷",
+  "海盜", "牛仔", "其實", "公主", "王子", "國王", "皇后台", "女巫", "超人", "蝙蝠俠",
+  "美國隊長", "雷神索爾", "綠巨人浩克", "黑寡婦", "奇異博士", "哈利波特", "魯夫", "鳴人", "悟空", "柯南",
+  // 物品與工具
+  "手機", "電腦", "吹風機", "雨傘", "馬桶", "衛生紙", "遙控器", "麥克風", "眼鏡", "口罩",
+  "手錶", "戒指", "項鍊", "耳環", "帽子", "圍巾", "手套", "襪子", "鞋子", "背包",
+  "牙刷", "牙膏", "毛巾", "肥皂", "洗髮精", "沐浴乳", "掃把", "拖把", "吸塵器", "垃圾桶",
+  "剪刀", "美工刀", "膠帶", "膠水", "釘書機", "原子筆", "鉛筆", "橡皮擦", "尺", "筆記本",
+  "電風扇", "冷氣", "冰箱", "電視", "洗衣機", "微波爐", "烤箱", "電鍋", "熱水瓶", "吹風機",
+  // 成語與俗語 (進階題)
+  "畫蛇添足", "對牛彈琴", "一石二鳥", "井底之蛙", "守株待兔", "掩耳盜鈴", "狐假虎威", "盲人摸象", "杯弓蛇影", "刻舟求劍",
+  "雞飛狗跳", "狼吞虎嚥", "龍飛鳳舞", "鶴立雞群", "雞同鴨講", "狗急跳牆", "打草驚蛇", "殺雞儆猴", "如魚得水", "沉魚落雁",
+  "三頭六臂", "七上八下", "五花大門", "一刀兩斷", "三心二意", "四面楚歌", "五體投地", "六神無主", "七嘴八舌", "九牛一毛"
+  // ... 可以自行持續擴充
 ];
 
 // --- 錯誤邊界 ---
@@ -138,7 +165,7 @@ function GameLobby({ onSelectGame }) {
                   <Users className="text-white w-8 h-8" />
                </div>
                <h2 className="text-2xl font-bold mb-2 text-white">比手畫腳大亂鬥</h2>
-               <p className="text-slate-400 text-sm">經典派對遊戲！內建 100 題庫、支援搶答、自訂題目與即時計分。</p>
+               <p className="text-slate-400 text-sm">經典派對遊戲！內建超大題庫、支援搶答、自訂題目與即時計分。</p>
              </div>
              <div className="flex items-center gap-2 text-indigo-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
                 進入遊戲 <ArrowLeft className="rotate-180" size={16}/>
@@ -162,7 +189,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.0 Enhanced</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.1 Stable</footer>
     </div>
   );
 }
@@ -203,7 +230,6 @@ function CharadesGame({ onBack }) {
         const data = docSnap.data();
         setRoomData(data);
         
-        // 確保目前使用者在玩家名單中，如果被踢出則回到大廳
         const amIInRoom = data.players.some(p => p.id === user.uid);
         if (!amIInRoom && view !== 'lobby') {
            alert("你已被踢出房間或房間已重置");
@@ -230,7 +256,6 @@ function CharadesGame({ onBack }) {
     setLoading(true);
     try {
       const newRoomId = generateRoomId();
-      // 確保玩家是 Array，並包含自己
       const me = { id: user.uid, name: playerName, team: null, isHost: true };
       
       await setDoc(doc(db, 'rooms', `room_${newRoomId}`), {
@@ -259,7 +284,6 @@ function CharadesGame({ onBack }) {
       
       if (snap.exists()) {
         const data = snap.data();
-        // 核心修正：檢查是否已存在，若存在則更新名字，若不存在則加入
         const currentPlayers = data.players || [];
         const otherPlayers = currentPlayers.filter(p => p.id !== user.uid);
         const me = { id: user.uid, name: playerName, team: null, isHost: false };
@@ -278,20 +302,17 @@ function CharadesGame({ onBack }) {
     setLoading(false);
   };
 
-  // 離開房間：這會真的移除資料庫中的玩家
   const leaveRoom = async () => {
+    // FIX: 使用 window.confirm 避免 ESLint 錯誤
     if (!window.confirm("確定離開房間？")) return;
     
     try {
       const ref = doc(db, 'rooms', `room_${roomId}`);
-      // 由於 arrayRemove 需要完全匹配物件，我們改用 filter 覆蓋整個陣列
       const newPlayers = roomData.players.filter(p => p.id !== user.uid);
       
       if (newPlayers.length === 0) {
-        // 如果沒人了，刪除房間狀態（或保留供查看，這邊選擇設為空）
          await updateDoc(ref, { players: [] }); 
       } else {
-         // 如果我是房主，移交房主給下一個人
          if (roomData.hostId === user.uid) {
              await updateDoc(ref, { 
                  players: newPlayers,
@@ -385,8 +406,7 @@ function CharadesGame({ onBack }) {
           {view === 'room' && <RoomView 
             roomData={roomData} isHost={isHost} roomId={roomId} currentUser={user}
             onStart={async () => {
-             // 混合自訂題目與100題庫
-             const allWords = [...DEFAULT_WORDS_100, ...roomData.customWords].sort(() => 0.5 - Math.random());
+             const allWords = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(() => 0.5 - Math.random());
              await updateDoc(doc(db, 'rooms', `room_${roomId}`), {
                status: 'playing', wordQueue: allWords, scores: { A: 0, B: 0 },
                currentRound: 1, currentTeam: roomData.settings.startTeam, gameState: 'idle', currentWord: null, roundEndTime: null
@@ -439,7 +459,8 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   };
 
   const kickPlayer = async (targetId) => {
-      if(!confirm("確定要踢出這位玩家嗎？")) return;
+      // FIX: 使用 window.confirm 避免 ESLint 錯誤
+      if(!window.confirm("確定要踢出這位玩家嗎？")) return;
       const newPlayers = players.filter(p => p.id !== targetId);
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { players: newPlayers });
   };
@@ -513,7 +534,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2 max-h-40 overflow-y-auto">
                     {roomData.customWords?.map((w,i)=><span key={i} className="bg-yellow-50 px-3 py-1 rounded-full text-sm border border-yellow-200 text-yellow-800">{w}</span>)}
-                    {(!roomData.customWords || roomData.customWords.length === 0) && <span className="text-slate-400 text-sm">目前無自訂題目，將使用內建 100 題庫。</span>}
+                    {(!roomData.customWords || roomData.customWords.length === 0) && <span className="text-slate-400 text-sm">目前無自訂題目，將使用內建超大題庫。</span>}
                 </div>
             </div>
 
@@ -551,7 +572,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const nextWord = () => {
      let q = [...roomData.wordQueue];
      // 題庫用完自動補充
-     if(q.length === 0) q = [...DEFAULT_WORDS_100, ...roomData.customWords].sort(()=>0.5-Math.random());
+     if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
      const w = q.pop();
      updateGame({ wordQueue: q, currentWord: w, turnEndTime: Date.now() + roomData.settings.answerTime*1000 });
   };
