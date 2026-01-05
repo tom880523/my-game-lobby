@@ -500,7 +500,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   };
 
   const deleteCategory = async () => {
-      if (!confirm("確定刪除此題庫？")) return;
+      if (!window.confirm("確定刪除此題庫？")) return;
       const updatedCats = customCategories.filter(c => c.id !== editingCategory.id);
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
       setEditingCategory(null);
