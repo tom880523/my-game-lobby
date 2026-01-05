@@ -181,7 +181,7 @@ function GameLobby({ onSelectGame }) {
          <div>
              {user && !user.isAnonymous ? (
                  <div className="flex items-center gap-2">
-                     {isAdmin && <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded font-bold">Admin</span>}
+                     {isAdmin && <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded font-bold shadow-glow">Admin</span>}
                      <button onClick={handleLogout} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-full text-sm transition border border-slate-700">
                          {user.photoURL && <img src={user.photoURL} alt="user" className="w-6 h-6 rounded-full"/>}
                          <span>登出</span>
@@ -229,7 +229,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v4.4 Secure Admin</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v4.5 Secure Admin (Firestore)</footer>
     </div>
   );
 }
