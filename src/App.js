@@ -11,7 +11,7 @@ import {
   Shuffle, AlertCircle, ClipboardCopy, Trophy, 
   Gamepad2, ArrowLeft, Construction, LogOut, Trash2, Crown,
   Eye, EyeOff, Pause, RotateCcw, Timer, Zap, Edit, ChevronRight,
-  Save, Lock, Unlock, Grid
+  Save, Lock, Unlock, Grid, Cloud, Download, Upload, FileText, Move
 } from 'lucide-react';
 
 // 引入外部題庫檔案
@@ -176,7 +176,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v3.5 Multi-Team & Persistence</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v4.0 DragDrop & Cloud Deck</footer>
     </div>
   );
 }
@@ -185,16 +185,14 @@ function GameLobby({ onSelectGame }) {
 const DEFAULT_SETTINGS = {
   answerTime: 30, stealTime: 10, roundDuration: 600, totalRounds: 2, 
   pointsCorrect: 3, pointsSkip: -1, 
-  // 新的隊伍結構
   teams: [
     { id: 'team_a', name: 'A 隊', color: 'red' },
     { id: 'team_b', name: 'B 隊', color: 'blue' }
   ],
   startTeamIndex: 0,
-  // 權限設定
   permissions: {
-    allowPlayerTeamSwitch: true, // 允許參賽者換隊
-    allowPlayerAddWords: false   // 允許參賽者加字
+    allowPlayerTeamSwitch: false, // 預設不允許參賽者自己換隊
+    allowPlayerAddWords: false   
   }
 };
 
@@ -228,11 +226,6 @@ function CharadesGame({ onBack, getNow }) {
         const data = docSnap.data();
         setRoomData(data);
         
-        // 自動儲存自訂題庫到 LocalStorage (僅房主)
-        if (data.hostId === user.uid && data.customCategories) {
-            localStorage.setItem('charades_custom_decks', JSON.stringify(data.customCategories));
-        }
-
         const amIInRoom = data.players && data.players.some(p => p.id === user.uid);
         if (!amIInRoom && view !== 'lobby') {
            alert("你已被踢出房間或房間已重置");
@@ -260,26 +253,16 @@ function CharadesGame({ onBack, getNow }) {
       const newRoomId = generateRoomId();
       const me = { id: user.uid, name: playerName, team: null, isHost: true };
       
-      // 從 LocalStorage 載入舊題庫
-      let savedDecks = [];
-      try {
-          const saved = localStorage.getItem('charades_custom_decks');
-          if (saved) savedDecks = JSON.parse(saved);
-      } catch (e) { console.error("Load local decks failed", e); }
-
       await setDoc(doc(db, 'rooms', `room_${newRoomId}`), {
         id: newRoomId, hostId: user.uid, status: 'waiting',
         players: [me],
         settings: DEFAULT_SETTINGS, 
-        scores: {}, // 改為動態分數物件 { team_a: 0, team_b: 0 }
-        
+        scores: {}, 
         currentRound: 1, 
         currentTeamId: DEFAULT_SETTINGS.teams[0].id, 
-        
         wordQueue: [], 
         useDefaultCategory: true,
-        customCategories: savedDecks, 
-
+        customCategories: [], 
         currentWord: null, roundEndTime: null, turnEndTime: null, gameState: 'idle',
         lastEvent: null 
       });
@@ -435,7 +418,11 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   const [editingCategory, setEditingCategory] = useState(null); 
   const [newCatName, setNewCatName] = useState("");
   const [newWordInput, setNewWordInput] = useState("");
-  const [editingTeamName, setEditingTeamName] = useState(null); // { id, name }
+  const [editingTeamName, setEditingTeamName] = useState(null);
+  const [importCode, setImportCode] = useState(""); // 用於匯入雲端題庫
+  
+  // Drag State
+  const [draggedPlayer, setDraggedPlayer] = useState(null);
 
   const players = roomData.players || [];
   const participants = players.filter(p => p.id !== roomData.hostId);
@@ -451,22 +438,14 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
 
   const randomize = async () => {
     const shuffled = [...participants].sort(() => 0.5 - Math.random());
-    // 平均分配
     const teamIds = teams.map(t => t.id);
-    const newParticipants = shuffled.map((p, i) => ({ 
-        ...p, 
-        team: teamIds[i % teamIds.length] // 循環分配
-    }));
-    
-    // 保持 Host
+    const newParticipants = shuffled.map((p, i) => ({ ...p, team: teamIds[i % teamIds.length] }));
     const newPlayersList = hostPlayer ? [...newParticipants, { ...hostPlayer, team: null }] : newParticipants;
     await updateDoc(doc(db, 'rooms', `room_${roomId}`), { players: newPlayersList });
   };
 
-  const joinTeam = async (teamId) => {
-      if (!canSwitchTeam) return alert("主持人已鎖定隊伍分配");
-      // 找出自己的資料並更新 Team
-      const newPlayers = players.map(p => p.id === currentUser.uid ? { ...p, team: teamId } : p);
+  const changePlayerTeam = async (playerId, newTeamId) => {
+      const newPlayers = players.map(p => p.id === playerId ? { ...p, team: newTeamId } : p);
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { players: newPlayers });
   };
 
@@ -487,7 +466,31 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       setEditingTeamName(null);
   };
 
-  // --- 題庫管理邏輯 ---
+  // --- 拖曳功能 ---
+  const handleDragStart = (e, player) => {
+      if (!isHost) return;
+      setDraggedPlayer(player);
+      e.dataTransfer.setData("text/plain", player.id);
+      e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e) => {
+      if (!isHost) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = async (e, teamId) => {
+      if (!isHost) return;
+      e.preventDefault();
+      const playerId = e.dataTransfer.getData("text/plain");
+      if (playerId) {
+          await changePlayerTeam(playerId, teamId);
+      }
+      setDraggedPlayer(null);
+  };
+
+  // --- 題庫管理 ---
   const toggleDefault = async () => {
       if (!isHost) return;
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { useDefaultCategory: !roomData.useDefaultCategory });
@@ -508,8 +511,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   };
 
   const openEditCategory = (cat) => {
-      // 只有主持人或開放權限時可編輯
-      if (!canAddWords) return alert("主持人未開放新增題目");
+      if (!isHost && !canAddWords) return alert("主持人未開放新增題目");
       setEditingCategory(cat);
   };
 
@@ -522,7 +524,6 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
           return c;
       });
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
-      
       const newCat = updatedCats.find(c => c.id === editingCategory.id);
       setEditingCategory(newCat);
       setNewWordInput("");
@@ -549,47 +550,150 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       setEditingCategory(null);
   };
 
+  // 雲端功能
+  const saveDeckToCloud = async () => {
+      if (!editingCategory) return;
+      try {
+          const docRef = await addDoc(collection(db, 'public_decks'), {
+              name: editingCategory.name,
+              words: editingCategory.words,
+              createdAt: serverTimestamp()
+          });
+          alert(`題庫已上傳！請記住此代碼以在其他裝置匯入：\n\n${docRef.id}`);
+      } catch (e) {
+          alert("上傳失敗：" + e.message);
+      }
+  };
+
+  const importDeckFromCloud = async () => {
+      if (!importCode.trim()) return;
+      try {
+          const deckDoc = await getDoc(doc(db, 'public_decks', importCode.trim()));
+          if (deckDoc.exists()) {
+              const deck = deckDoc.data();
+              const newCat = { id: generateId(), name: deck.name, words: deck.words || [], enabled: true };
+              await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: [...customCategories, newCat] });
+              alert(`成功匯入題庫：${deck.name} (${deck.words?.length} 題)`);
+              setImportCode("");
+          } else {
+              alert("找不到此代碼的題庫");
+          }
+      } catch (e) {
+          alert("匯入失敗：" + e.message);
+      }
+  };
+
+  // CSV 匯入
+  const handleCSVUpload = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+          const text = evt.target.result;
+          // 分割逗號或換行
+          const words = text.split(/[,\n\r]+/).map(w => w.trim()).filter(w => w.length > 0);
+          if (words.length === 0) return alert("檔案內沒有內容");
+          
+          if (!editingCategory) return;
+          const updatedCats = customCategories.map(c => {
+              if (c.id === editingCategory.id) {
+                  // 去除重複並合併
+                  const uniqueWords = [...new Set([...c.words, ...words])];
+                  return { ...c, words: uniqueWords };
+              }
+              return c;
+          });
+          await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
+          const newCat = updatedCats.find(c => c.id === editingCategory.id);
+          setEditingCategory(newCat);
+          alert(`已匯入 ${words.length} 個題目`);
+      };
+      reader.readAsText(file);
+  };
+
   // --- UI Helpers ---
-  const PlayerItem = ({ p, showKick, showPromote }) => (
-      <div className="flex items-center justify-between bg-white/60 p-2 rounded-lg mb-1 border border-slate-200">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-700 font-medium">{p.name}</span>
-            {p.id === roomData.hostId && <Crown size={14} className="text-yellow-500 fill-yellow-500"/>}
-            {p.id === currentUser.uid && <span className="text-xs bg-slate-200 text-slate-600 px-1 rounded">我</span>}
-          </div>
-          <div className="flex gap-1">
-            {showPromote && <button onClick={() => makeHost(p.id)} className="text-slate-400 hover:text-yellow-500 p-1"><Crown size={14}/></button>}
-            {showKick && <button onClick={() => kickPlayer(p.id)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={14}/></button>}
-          </div>
-      </div>
-  );
+  const PlayerItem = ({ p, showKick, showPromote }) => {
+      const [showMoveMenu, setShowMoveMenu] = useState(false);
+      
+      return (
+        <div 
+            className={`relative flex items-center justify-between bg-white/60 p-2 rounded-lg mb-1 border border-slate-200 ${isHost ? 'cursor-grab active:cursor-grabbing hover:bg-white/80' : ''}`}
+            draggable={isHost}
+            onDragStart={(e) => handleDragStart(e, p)}
+            onClick={() => isHost && setShowMoveMenu(!showMoveMenu)}
+        >
+            <div className="flex items-center gap-2 pointer-events-none">
+                <span className="text-slate-700 font-medium">{p.name}</span>
+                {p.id === roomData.hostId && <Crown size={14} className="text-yellow-500 fill-yellow-500"/>}
+                {p.id === currentUser.uid && <span className="text-xs bg-slate-200 text-slate-600 px-1 rounded">我</span>}
+            </div>
+            <div className="flex gap-1">
+                {showPromote && <button onClick={(e) => {e.stopPropagation(); makeHost(p.id)}} className="text-slate-400 hover:text-yellow-500 p-1"><Crown size={14}/></button>}
+                {showKick && <button onClick={(e) => {e.stopPropagation(); kickPlayer(p.id)}} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={14}/></button>}
+            </div>
+
+            {/* 手機版/點擊移動選單 */}
+            {showMoveMenu && isHost && (
+                <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg z-50 p-2 min-w-[150px]">
+                    <div className="text-xs font-bold text-slate-400 mb-1 px-2">移動至...</div>
+                    <button onClick={() => changePlayerTeam(p.id, null)} className="w-full text-left px-2 py-1.5 hover:bg-slate-100 rounded text-sm text-slate-700">等待區</button>
+                    {teams.map(t => (
+                        <button key={t.id} onClick={() => changePlayerTeam(p.id, t.id)} className="w-full text-left px-2 py-1.5 hover:bg-slate-100 rounded text-sm text-slate-700">
+                            {t.name}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+      );
+  };
 
   return (
     <div className="p-4 md:p-8 w-full space-y-6">
       {/* 題庫編輯 Modal */}
       {editingCategory && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-              <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4 max-h-[80vh] flex flex-col animate-in zoom-in duration-200">
+              <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col animate-in zoom-in duration-200">
                   <div className="flex justify-between items-center border-b pb-2">
-                      <h3 className="font-bold text-lg">{editingCategory.name} <span className="text-xs text-slate-400">({editingCategory.words.length}題)</span></h3>
+                      <h3 className="font-bold text-lg flex items-center gap-2">
+                          <Edit size={18} className="text-indigo-500"/>
+                          {editingCategory.name} 
+                          <span className="text-xs text-slate-400 font-normal">({editingCategory.words.length}題)</span>
+                      </h3>
                       <button onClick={() => setEditingCategory(null)}><X className="text-slate-400 hover:text-slate-600"/></button>
                   </div>
+                  
+                  {/* 新增題目輸入 */}
                   <div className="flex gap-2">
-                      <input value={newWordInput} onChange={e=>setNewWordInput(e.target.value)} className="flex-1 border p-2 rounded-lg" placeholder="輸入新題目..." onKeyDown={e => e.key === 'Enter' && addWordToCategory()}/>
-                      <button onClick={addWordToCategory} className="bg-indigo-600 text-white px-4 rounded-lg"><Plus/></button>
+                      <input value={newWordInput} onChange={e=>setNewWordInput(e.target.value)} className="flex-1 border p-2 rounded-lg text-sm" placeholder="輸入新題目..." onKeyDown={e => e.key === 'Enter' && addWordToCategory()}/>
+                      <button onClick={addWordToCategory} className="bg-indigo-600 text-white px-3 rounded-lg"><Plus/></button>
                   </div>
+
+                  {/* 工具列 */}
+                  <div className="flex gap-2 text-xs overflow-x-auto pb-2">
+                      <label className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg cursor-pointer whitespace-nowrap">
+                          <FileText size={14}/> 匯入 CSV
+                          <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVUpload}/>
+                      </label>
+                      <button onClick={saveDeckToCloud} className="flex items-center gap-1 bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-2 rounded-lg whitespace-nowrap">
+                          <Cloud size={14}/> 上傳雲端
+                      </button>
+                  </div>
+
+                  {/* 題目列表 */}
                   <div className="flex-1 overflow-y-auto border rounded-lg p-2 bg-slate-50 space-y-1">
                       {editingCategory.words.map((w, i) => (
-                          <div key={i} className="flex justify-between items-center bg-white p-2 rounded shadow-sm">
+                          <div key={i} className="flex justify-between items-center bg-white p-2 rounded shadow-sm group">
                               <span>{w}</span>
-                              <button onClick={() => removeWordFromCategory(w)} className="text-red-400 hover:text-red-600"><X size={14}/></button>
+                              <button onClick={() => removeWordFromCategory(w)} className="text-slate-300 hover:text-red-500"><X size={14}/></button>
                           </div>
                       ))}
                       {editingCategory.words.length === 0 && <div className="text-center text-slate-400 py-4">還沒有題目，快新增吧！</div>}
                   </div>
+                  
                   <div className="pt-2 border-t flex justify-between">
-                      {isHost ? <button onClick={deleteCategory} className="text-red-500 text-sm flex items-center gap-1"><Trash2 size={14}/> 刪除此分類</button> : <div></div>}
-                      <button onClick={() => setEditingCategory(null)} className="bg-slate-200 px-4 py-2 rounded-lg text-sm font-bold">完成</button>
+                      {isHost ? <button onClick={deleteCategory} className="text-red-500 text-sm flex items-center gap-1"><Trash2 size={14}/> 刪除</button> : <div></div>}
+                      <button onClick={() => setEditingCategory(null)} className="bg-slate-800 text-white px-6 py-2 rounded-lg text-sm font-bold">完成</button>
                   </div>
               </div>
           </div>
@@ -609,12 +713,14 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
             </div>
 
             {/* 未分組區 */}
-            <div className={`bg-slate-50 p-3 rounded-xl border border-dashed transition-colors ${unassigned.length>0 ? 'border-orange-300 bg-orange-50' : 'border-slate-200'}`}>
+            <div 
+                className={`bg-slate-50 p-3 rounded-xl border border-dashed transition-all ${unassigned.length>0 ? 'border-orange-300 bg-orange-50' : 'border-slate-200'}`}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, null)}
+            >
                 <div className="flex justify-between items-center mb-2">
                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">等待分組 ({unassigned.length})</h4>
-                    {canSwitchTeam && currentUser.uid !== hostPlayer?.id && !players.find(p=>p.id===currentUser.uid)?.team && (
-                        <span className="text-xs text-green-600 font-bold">請選擇下方隊伍加入 ↓</span>
-                    )}
+                    {isHost && <span className="text-[10px] text-slate-400">可拖曳玩家換隊</span>}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                     {unassigned.map(p => <PlayerItem key={p.id} p={p} showKick={isHost && p.id !== currentUser.uid} showPromote={isHost} />)}
@@ -625,10 +731,14 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
             <div className="grid grid-cols-1 gap-4">
                 {teams.map((team) => {
                     const teamPlayers = participants.filter(p => p.team === team.id);
-                    const isMyTeam = players.find(p => p.id === currentUser.uid)?.team === team.id;
                     
                     return (
-                        <div key={team.id} className={`p-4 rounded-xl border transition-all ${isMyTeam ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-200' : 'bg-white border-slate-200'}`}>
+                        <div 
+                            key={team.id} 
+                            className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 transition-colors"
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, team.id)}
+                        >
                             <div className="flex justify-between items-center mb-3">
                                 {isHost && editingTeamName?.id === team.id ? (
                                     <input 
@@ -649,19 +759,10 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                                         {team.name}
                                     </h3>
                                 )}
-                                
-                                {canSwitchTeam && !isMyTeam && currentUser.uid !== hostPlayer?.id && (
-                                    <button 
-                                        onClick={() => joinTeam(team.id)}
-                                        className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-full transition"
-                                    >
-                                        加入此隊
-                                    </button>
-                                )}
                             </div>
                             <div className="space-y-1 min-h-[40px]">
                                 {teamPlayers.map(p => <PlayerItem key={p.id} p={p} showKick={isHost && p.id !== currentUser.uid} showPromote={isHost} />)}
-                                {teamPlayers.length === 0 && <span className="text-slate-300 text-sm italic p-1 block">尚無隊員</span>}
+                                {teamPlayers.length === 0 && <span className="text-slate-300 text-sm italic p-1 block border border-dashed rounded text-center">拖曳玩家至此</span>}
                             </div>
                         </div>
                     );
@@ -715,11 +816,19 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                     </div>
                 ))}
 
-                {/* 3. 新增分類 (僅限有權限者) */}
+                {/* 3. 新增與匯入 */}
                 {(canAddWords || isHost) && (
-                    <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
-                        <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} className="border border-slate-200 p-2 rounded-xl flex-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="新增題庫分類..." />
-                        <button onClick={addCategory} className="bg-slate-800 hover:bg-slate-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Plus size={16}/> 新增</button>
+                    <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
+                        <div className="flex gap-2">
+                            <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} className="border border-slate-200 p-2 rounded-xl flex-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="新增題庫分類..." />
+                            <button onClick={addCategory} className="bg-slate-800 hover:bg-slate-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Plus size={16}/> 新增</button>
+                        </div>
+                        
+                        {/* 雲端匯入 */}
+                        <div className="flex gap-2">
+                            <input value={importCode} onChange={e=>setImportCode(e.target.value)} className="border border-slate-200 p-2 rounded-xl flex-1 focus:ring-2 focus:ring-sky-500 outline-none text-sm" placeholder="輸入雲端題庫代碼..." />
+                            <button onClick={importDeckFromCloud} className="bg-sky-600 hover:bg-sky-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Download size={16}/> 下載</button>
+                        </div>
                     </div>
                 )}
             </div>
