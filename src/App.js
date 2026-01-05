@@ -10,7 +10,7 @@ import {
   Users, Play, Settings, Plus, Check, X, 
   Shuffle, AlertCircle, ClipboardCopy, Trophy, 
   Gamepad2, ArrowLeft, Construction, LogOut, Trash2, Crown,
-  Eye, EyeOff, Pause, RotateCcw, Timer, FastForward, UserCheck
+  Eye, EyeOff, Pause, RotateCcw, Timer, Zap
 } from 'lucide-react';
 
 // =================================================================
@@ -94,23 +94,20 @@ function MainApp() {
   useEffect(() => {
     const syncTime = async () => {
       try {
-        // 1. 寫入一個暫時文件，包含 Server Timestamp
         const tempDocRef = await addDoc(collection(db, 'time_sync'), {
           timestamp: serverTimestamp()
         });
         
-        // 2. 監聽該文件以獲取 Server 寫入的時間
         const unsubscribe = onSnapshot(tempDocRef, (snap) => {
           if (snap.exists() && snap.data().timestamp) {
             const serverTime = snap.data().timestamp.toMillis();
             const localTime = Date.now();
             const offset = serverTime - localTime;
-            console.log("Server Time Offset:", offset, "ms");
+            // console.log("Time Offset:", offset); 
             setServerTimeOffset(offset);
             
-            // 清理
             unsubscribe();
-            deleteDoc(tempDocRef);
+            deleteDoc(tempDocRef).catch(()=>{});
           }
         });
       } catch (e) {
@@ -121,7 +118,6 @@ function MainApp() {
     if (db) syncTime();
   }, []);
 
-  // 封裝一個取得「現在校正後時間」的函式
   const getNow = () => Date.now() + serverTimeOffset;
 
   if (initError) {
@@ -189,7 +185,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.4 Host & Time Sync</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.5 Steal & Fixes</footer>
     </div>
   );
 }
@@ -401,9 +397,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   const participants = players.filter(p => p.id !== roomData.hostId);
   const teamA = participants.filter(p => p.team === 'A');
   const teamB = participants.filter(p => p.team === 'B');
-  // 未分組 = 參賽者中沒有隊伍的人
   const unassigned = participants.filter(p => !p.team); 
-  // 找出主持人資料
   const hostPlayer = players.find(p => p.id === roomData.hostId);
   
   const randomize = async () => {
@@ -411,10 +405,8 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
     const shuffled = [...participants].sort(() => 0.5 - Math.random());
     const mid = Math.ceil(shuffled.length / 2);
     
-    // 重新組裝所有玩家列表：Host 保持原狀 (或清空 team)，其他人分 A/B
     const newParticipants = shuffled.map((p, i) => ({ ...p, team: i < mid ? 'A' : 'B' }));
     
-    // 如果有主持人，確保他在列表裡，且 team 為 null (不參賽)
     const newPlayersList = hostPlayer 
         ? [...newParticipants, { ...hostPlayer, team: null }] 
         : newParticipants;
@@ -514,26 +506,28 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const [timeLeft, setTimeLeft] = useState(0);
   const [roundTimeLeft, setRoundTimeLeft] = useState(0);
   const [notification, setNotification] = useState(null); 
-  // 記錄最後一次顯示的事件時間戳，避免重複顯示
   const lastEventRef = useRef(0);
 
-  // 事件通知監聽 (修正：不依賴系統時間，只要有新事件就顯示)
+  // 通知監聽 (修正：開場檢查時間，避免顯示舊通知)
   useEffect(() => {
     if (roomData.lastEvent && roomData.lastEvent.timestamp !== lastEventRef.current) {
-      setNotification(roomData.lastEvent);
+      // 防止載入過久的歷史通知 (>3秒前的通知忽略)
+      const isStale = Date.now() - roomData.lastEvent.timestamp > 3000;
       lastEventRef.current = roomData.lastEvent.timestamp;
       
-      const timer = setTimeout(() => setNotification(null), 2000);
-      return () => clearTimeout(timer);
+      if (!isStale) {
+        setNotification(roomData.lastEvent);
+        const timer = setTimeout(() => setNotification(null), 2000);
+        return () => clearTimeout(timer);
+      }
     }
   }, [roomData.lastEvent]);
 
-  // 計時器邏輯 (使用 getNow() 進行同步)
+  // 計時器邏輯
   useEffect(() => {
     const t = setInterval(() => {
-      const now = getNow(); // 使用校正後的時間
+      const now = getNow();
       
-      // 題目計時
       if (roomData.gameState === 'paused' && roomData.savedState) {
         setTimeLeft(Math.max(0, Math.ceil(roomData.savedState.remainingTurn / 1000)));
       } else if (roomData.turnEndTime) {
@@ -543,7 +537,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
         setTimeLeft(roomData.settings.answerTime);
       }
 
-      // 回合計時
       if (roomData.gameState === 'paused' && roomData.savedState) {
         setRoundTimeLeft(Math.max(0, Math.ceil(roomData.savedState.remainingRound / 1000)));
       } else if (roomData.gameState === 'active' && roomData.roundEndTime) {
@@ -554,15 +547,13 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
       }
     }, 100);
     return () => clearInterval(t);
-  }, [roomData, getNow]); // 相依 getNow 確保時間正確
+  }, [roomData, getNow]);
 
   const updateGame = (data) => updateDoc(doc(db, 'rooms', `room_${roomId}`), data);
-  
-  // 觸發全場通知事件 (加上亂數後綴確保每次都是新物件)
   const triggerEvent = (text, color, extraData = {}) => {
     updateGame({
       ...extraData,
-      lastEvent: { text, color, timestamp: Date.now() + Math.random() }
+      lastEvent: { text, color, timestamp: Date.now() }
     });
   };
 
@@ -570,8 +561,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
      let q = [...roomData.wordQueue];
      if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
      const w = q.pop();
-     
-     // 這裡用 getNow() 確保 host 設定的時間是同步後的 server 時間
      const now = getNow();
      const newTurnEnd = now + roomData.settings.answerTime*1000;
      
@@ -598,38 +587,37 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
       });
   };
 
+  const handleOpponentSteal = () => {
+      const opponentTeam = roomData.currentTeam === 'A' ? 'B' : 'A';
+      let q = [...roomData.wordQueue];
+      if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
+      const w = q.pop();
+      const now = getNow();
+      const newTurnEnd = now + roomData.settings.answerTime*1000;
+
+      triggerEvent(`⚡ ${opponentTeam} 隊搶答成功！`, "text-purple-500", {
+          wordQueue: q, currentWord: w, turnEndTime: newTurnEnd,
+          [`scores.${opponentTeam}`]: increment(roomData.settings.pointsCorrect) // 搶答算答對分
+      });
+  };
+
   const pauseGame = () => {
       const now = getNow();
       const remainingTurn = roomData.turnEndTime ? roomData.turnEndTime - now : 0;
       const remainingRound = roomData.roundEndTime ? roomData.roundEndTime - now : 0;
-      
-      updateGame({
-          gameState: 'paused',
-          savedState: { remainingTurn, remainingRound }
-      });
+      updateGame({ gameState: 'paused', savedState: { remainingTurn, remainingRound } });
   };
 
   const resumeGame = () => {
       const now = getNow();
       const newTurnEnd = now + (roomData.savedState?.remainingTurn || 0);
       const newRoundEnd = now + (roomData.savedState?.remainingRound || 0);
-      
-      updateGame({
-          gameState: 'active',
-          turnEndTime: newTurnEnd,
-          roundEndTime: newRoundEnd,
-          savedState: null
-      });
+      updateGame({ gameState: 'active', turnEndTime: newTurnEnd, roundEndTime: newRoundEnd, savedState: null });
   };
 
   const resetRound = () => {
       if(!window.confirm("確定要重置本回合嗎？")) return;
-      updateGame({
-          gameState: 'idle',
-          roundEndTime: null,
-          turnEndTime: null,
-          currentWord: null
-      });
+      updateGame({ gameState: 'idle', roundEndTime: null, turnEndTime: null, currentWord: null });
   };
 
   const switchTeam = () => {
@@ -648,19 +636,18 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const isRoundOver = roundTimeLeft <= 0 && roomData.gameState === 'active';
   const showControls = isHost && !previewAsPlayer;
   const wordDisplay = showControls ? roomData.currentWord : (roomData.currentWord ? roomData.currentWord.replace(/[^\s]/g, '❓') : "準備中");
+  const opponentTeam = roomData.currentTeam === 'A' ? 'B' : 'A';
 
   return (
     <div className="flex-1 bg-slate-900 text-white flex flex-col relative overflow-hidden">
-       {/* 全場通知彈出層 */}
        {notification && (
            <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
-               <div className={`text-6xl font-black bg-white/90 px-8 py-4 rounded-3xl shadow-2xl backdrop-blur-md animate-bounce ${notification.color}`}>
+               <div className={`text-4xl md:text-6xl font-black bg-white/90 px-8 py-4 rounded-3xl shadow-2xl backdrop-blur-md animate-bounce ${notification.color}`}>
                    {notification.text}
                </div>
            </div>
        )}
 
-       {/* 暫停遮罩 */}
        {roomData.gameState === 'paused' && (
            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-40 flex flex-col items-center justify-center">
                <Pause size={64} className="text-white mb-4 animate-pulse"/>
@@ -669,7 +656,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
            </div>
        )}
 
-       {/* 遊戲計分板 */}
        <div className="bg-slate-800 p-4 flex justify-between items-center z-10 shadow-md">
           <div className={`transition-all duration-300 ${roomData.currentTeam==='A'?'scale-110 opacity-100':'opacity-50 grayscale'}`}>
              <div className="flex flex-col items-center p-2 rounded-xl bg-red-900/30 border border-red-500/30 min-w-[80px]">
@@ -677,7 +663,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
                  <span className="text-3xl font-black text-white">{roomData.scores.A}</span>
              </div>
           </div>
-
           <div className="text-center flex flex-col items-center">
              <div className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">Round {roomData.currentRound} / {roomData.settings.totalRounds}</div>
              <div className={`text-2xl font-mono font-bold px-4 py-1 rounded bg-black/40 ${roundTimeLeft < 60 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
@@ -685,7 +670,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
              </div>
              {isHost && <button onClick={()=>setPreviewAsPlayer(!previewAsPlayer)} className="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded mt-2 flex items-center gap-1 transition-colors">{previewAsPlayer ? <EyeOff size={10}/> : <Eye size={10}/>} {previewAsPlayer?"退出預覽":"預覽玩家"}</button>}
           </div>
-
           <div className={`transition-all duration-300 ${roomData.currentTeam==='B'?'scale-110 opacity-100':'opacity-50 grayscale'}`}>
              <div className="flex flex-col items-center p-2 rounded-xl bg-blue-900/30 border border-blue-500/30 min-w-[80px]">
                  <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">B 隊</span>
@@ -694,27 +678,21 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
           </div>
        </div>
 
-       {/* 主遊戲區 */}
        <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 text-center relative">
           <div className={`absolute inset-0 bg-gradient-to-b ${roomData.currentTeam==='A' ? 'from-red-900/20' : 'from-blue-900/20'} to-slate-900 pointer-events-none`}></div>
 
-          {/* 狀態：回合結束 */}
           {isRoundOver ? (
               <div className="z-10 animate-in zoom-in duration-300 bg-slate-800/80 p-8 rounded-3xl border border-slate-600 backdrop-blur-md">
                   <Timer size={64} className="text-red-400 mx-auto mb-4"/>
                   <h2 className="text-4xl font-bold mb-2 text-white">時間到！</h2>
                   <p className="text-slate-400 mb-6">本回合結束，請準備交換隊伍。</p>
                   {showControls ? (
-                      <button onClick={switchTeam} className="px-10 py-4 bg-amber-500 hover:bg-amber-600 text-slate-900 rounded-full font-bold text-xl shadow-lg transition-transform hover:scale-105">
-                          換下一隊
-                      </button>
+                      <button onClick={switchTeam} className="px-10 py-4 bg-amber-500 hover:bg-amber-600 text-slate-900 rounded-full font-bold text-xl shadow-lg transition-transform hover:scale-105">換下一隊</button>
                   ) : <div className="text-amber-400 font-bold animate-pulse">等待主持人切換...</div>}
               </div>
           ) : roomData.gameState === 'idle' ? (
              <div className="z-10 animate-in zoom-in duration-300">
-                <h2 className="text-4xl font-bold mb-6 drop-shadow-lg">
-                    輪到 <span className={roomData.currentTeam === 'A' ? 'text-red-400' : 'text-blue-400'}>{roomData.currentTeam} 隊</span>
-                </h2>
+                <h2 className="text-4xl font-bold mb-6 drop-shadow-lg">輪到 <span className={roomData.currentTeam === 'A' ? 'text-red-400' : 'text-blue-400'}>{roomData.currentTeam} 隊</span></h2>
                 {showControls ? <button onClick={() => {
                    const now = getNow();
                    const roundEnd = (roomData.roundEndTime && roomData.roundEndTime > now) ? roomData.roundEndTime : now + roomData.settings.roundDuration * 1000;
@@ -726,12 +704,9 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
           ) : (
              <div className="w-full max-w-2xl z-10">
                 <div className="mb-10 relative inline-block">
-                    <div className={`w-32 h-32 rounded-full border-8 flex items-center justify-center bg-slate-800 text-5xl font-mono font-bold shadow-2xl ${isSteal?'border-yellow-500 animate-pulse text-yellow-500':'border-slate-600 text-white'}`}>
-                        {timeLeft}
-                    </div>
+                    <div className={`w-32 h-32 rounded-full border-8 flex items-center justify-center bg-slate-800 text-5xl font-mono font-bold shadow-2xl ${isSteal?'border-yellow-500 animate-pulse text-yellow-500':'border-slate-600 text-white'}`}>{timeLeft}</div>
                     {isSteal && <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-3 py-1 text-xs font-bold rounded-full animate-bounce whitespace-nowrap shadow-lg border-2 border-slate-900">搶答時間!</div>}
                 </div>
-                
                 <div className="bg-white text-slate-900 p-10 rounded-3xl shadow-2xl min-h-[240px] flex flex-col justify-center items-center border-4 border-slate-200 transform transition-all">
                    <h1 className="text-5xl md:text-7xl font-black break-all leading-tight">{wordDisplay}</h1>
                    {!showControls && isSteal && <p className="text-red-500 font-bold mt-6 text-xl animate-bounce">⚠️ 對方可搶答！</p>}
@@ -741,7 +716,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
           )}
        </div>
 
-       {/* 主持人控制區 */}
        {showControls && (
          <div className="bg-slate-800 p-4 border-t border-slate-700 z-20 pb-8 md:pb-4">
             {isRoundOver ? (
@@ -755,15 +729,22 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
                       <X className="group-hover:text-white transition-colors"/><span className="text-[10px] mt-1 font-bold">跳過</span>
                   </button>
                   
-                  <button onClick={handleCorrect} className="col-span-2 bg-gradient-to-br from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-green-900/50 transform transition active:scale-95">
-                      <Check size={32} strokeWidth={3} /> <span className="text-sm font-bold mt-1">答對 (+{roomData.settings.pointsCorrect})</span>
-                  </button>
+                  {/* 如果是搶答時間，顯示敵隊搶答按鈕，否則顯示一般答對 */}
+                  {isSteal ? (
+                      <button onClick={handleOpponentSteal} className="col-span-2 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg transform transition active:scale-95 animate-pulse">
+                          <Zap size={32} strokeWidth={3} fill="currentColor"/> 
+                          <span className="text-sm font-bold mt-1">⚡ {opponentTeam} 隊搶答</span>
+                      </button>
+                  ) : (
+                      <button onClick={handleCorrect} className="col-span-2 bg-gradient-to-br from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg transform transition active:scale-95">
+                          <Check size={32} strokeWidth={3} /> <span className="text-sm font-bold mt-1">答對 (+{roomData.settings.pointsCorrect})</span>
+                      </button>
+                  )}
                   
                   <button onClick={() => nextWord(false)} className="bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex flex-col items-center justify-center transition active:scale-95">
                       <span className="text-sm font-bold">下一題</span><span className="text-[10px] opacity-70">(無分)</span>
                   </button>
 
-                  {/* 暫停/控制區 */}
                   <div className="flex flex-col gap-1">
                       {roomData.gameState === 'paused' ? (
                           <button onClick={resumeGame} className="flex-1 bg-green-500 rounded-lg flex items-center justify-center"><Play size={20}/></button>
@@ -773,7 +754,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
                       <button onClick={resetRound} className="flex-1 bg-slate-600 rounded-lg flex items-center justify-center text-xs" title="重置"><RotateCcw size={16}/></button>
                   </div>
 
-                  {/* 提前結算按鈕 */}
                   <button onClick={forceEndGame} className="bg-red-900/50 hover:bg-red-800 border border-red-700 text-red-200 rounded-2xl flex flex-col items-center justify-center text-[10px] font-bold" title="提前結束遊戲">
                       <Trophy size={16} className="mb-1"/> 提前<br/>結算
                   </button>
