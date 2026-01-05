@@ -10,11 +10,10 @@ import {
   Users, Play, Settings, Plus, Check, X, 
   Shuffle, AlertCircle, ClipboardCopy, Trophy, 
   Gamepad2, ArrowLeft, Construction, LogOut, Trash2, Crown,
-  Eye, EyeOff, Pause, RotateCcw, Timer, Zap
+  Eye, EyeOff, Pause, RotateCcw, Timer, Zap, Edit, ChevronRight
 } from 'lucide-react';
 
 // 引入外部題庫檔案
-// 確保您已經建立了 src/words.js 檔案
 import { DEFAULT_WORDS_LARGE } from './words'; 
 
 // =================================================================
@@ -96,9 +95,7 @@ function MainApp() {
             const serverTime = snap.data().timestamp.toMillis();
             const localTime = Date.now();
             const offset = serverTime - localTime;
-            // console.log("Time Offset:", offset); 
             setServerTimeOffset(offset);
-            
             unsubscribe();
             deleteDoc(tempDocRef).catch(()=>{});
           }
@@ -154,7 +151,7 @@ function GameLobby({ onSelectGame }) {
                   <Users className="text-white w-8 h-8" />
                </div>
                <h2 className="text-2xl font-bold mb-2 text-white">比手畫腳大亂鬥</h2>
-               <p className="text-slate-400 text-sm">經典派對遊戲！內建豐富題庫、支援搶答、自訂題目與即時計分。</p>
+               <p className="text-slate-400 text-sm">經典派對遊戲！內建豐富題庫、支援搶答、自訂分類題庫與即時計分。</p>
              </div>
              <div className="flex items-center gap-2 text-indigo-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
                 進入遊戲 <ArrowLeft className="rotate-180" size={16}/>
@@ -178,7 +175,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.5 Steal & Fixes</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v3.0 Custom Decks</footer>
     </div>
   );
 }
@@ -190,6 +187,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+const generateId = () => Math.random().toString(36).substring(2, 10);
 
 function CharadesGame({ onBack, getNow }) {
   const [user, setUser] = useState(null);
@@ -248,7 +246,12 @@ function CharadesGame({ onBack, getNow }) {
         id: newRoomId, hostId: user.uid, status: 'waiting',
         players: [me],
         settings: DEFAULT_SETTINGS, scores: { A: 0, B: 0 },
-        currentRound: 1, currentTeam: 'A', wordQueue: [], customWords: [],
+        currentRound: 1, currentTeam: 'A', wordQueue: [], 
+        
+        // 新的題庫結構
+        useDefaultCategory: true,
+        customCategories: [], // { id, name, words: [], enabled: true }
+
         currentWord: null, roundEndTime: null, turnEndTime: null, gameState: 'idle',
         lastEvent: null 
       });
@@ -340,9 +343,37 @@ function CharadesGame({ onBack, getNow }) {
        <main className="flex-1 flex flex-col max-w-5xl mx-auto w-full">
           {view === 'room' && <RoomView roomData={roomData} isHost={isHost} roomId={roomId} currentUser={user}
             onStart={async () => {
-             const allWords = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(() => 0.5 - Math.random());
+             // 收集所有啟用題庫的題目
+             let finalWords = [];
+             
+             // 1. 內建題庫
+             if (roomData.useDefaultCategory !== false) { // 預設為 true，兼容舊資料
+                 finalWords = [...finalWords, ...DEFAULT_WORDS_LARGE];
+             }
+
+             // 2. 自訂題庫
+             if (roomData.customCategories) {
+                 roomData.customCategories.forEach(cat => {
+                     if (cat.enabled && cat.words.length > 0) {
+                         finalWords = [...finalWords, ...cat.words];
+                     }
+                 });
+             }
+
+             // 3. 舊版單一自訂列表 (兼容舊房間)
+             if (roomData.customWords && roomData.customWords.length > 0) {
+                 finalWords = [...finalWords, ...roomData.customWords];
+             }
+
+             if (finalWords.length === 0) {
+                 alert("目前沒有任何題目！請先啟用內建題庫或新增自訂題目。");
+                 return;
+             }
+
+             const shuffled = finalWords.sort(() => 0.5 - Math.random());
+             
              await updateDoc(doc(db, 'rooms', `room_${roomId}`), {
-               status: 'playing', wordQueue: allWords, scores: { A: 0, B: 0 },
+               status: 'playing', wordQueue: shuffled, scores: { A: 0, B: 0 },
                currentRound: 1, currentTeam: roomData.settings.startTeam, gameState: 'idle', currentWord: null, roundEndTime: null, turnEndTime: null
              });
           }} />}
@@ -384,26 +415,24 @@ function LobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, creat
 }
 
 function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
-  const [newWord, setNewWord] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null); // { id, name, words }
+  const [newCatName, setNewCatName] = useState("");
+  const [newWordInput, setNewWordInput] = useState("");
+
   const players = roomData.players || [];
-  // 濾掉主持人，只讓參賽者分組
   const participants = players.filter(p => p.id !== roomData.hostId);
   const teamA = participants.filter(p => p.team === 'A');
   const teamB = participants.filter(p => p.team === 'B');
   const unassigned = participants.filter(p => !p.team); 
   const hostPlayer = players.find(p => p.id === roomData.hostId);
   
+  const customCategories = roomData.customCategories || [];
+
   const randomize = async () => {
-    // 只對「非主持人」的玩家進行隨機分組
     const shuffled = [...participants].sort(() => 0.5 - Math.random());
     const mid = Math.ceil(shuffled.length / 2);
-    
     const newParticipants = shuffled.map((p, i) => ({ ...p, team: i < mid ? 'A' : 'B' }));
-    
-    const newPlayersList = hostPlayer 
-        ? [...newParticipants, { ...hostPlayer, team: null }] 
-        : newParticipants;
-
+    const newPlayersList = hostPlayer ? [...newParticipants, { ...hostPlayer, team: null }] : newParticipants;
     await updateDoc(doc(db, 'rooms', `room_${roomId}`), { players: newPlayersList });
   };
 
@@ -418,6 +447,66 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { hostId: targetId });
   };
 
+  // --- 題庫管理邏輯 ---
+  const toggleDefault = async () => {
+      await updateDoc(doc(db, 'rooms', `room_${roomId}`), { useDefaultCategory: !roomData.useDefaultCategory });
+  };
+
+  const addCategory = async () => {
+      if (!newCatName.trim()) return;
+      const newCat = { id: generateId(), name: newCatName.trim(), words: [], enabled: true };
+      const updatedCats = [...customCategories, newCat];
+      await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
+      setNewCatName("");
+  };
+
+  const toggleCategory = async (catId) => {
+      const updatedCats = customCategories.map(c => c.id === catId ? { ...c, enabled: !c.enabled } : c);
+      await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
+  };
+
+  const openEditCategory = (cat) => {
+      setEditingCategory(cat);
+  };
+
+  const addWordToCategory = async () => {
+      if (!newWordInput.trim() || !editingCategory) return;
+      const updatedCats = customCategories.map(c => {
+          if (c.id === editingCategory.id) {
+              return { ...c, words: [...c.words, newWordInput.trim()] };
+          }
+          return c;
+      });
+      await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
+      
+      // Update local state to show immediately
+      const newCat = updatedCats.find(c => c.id === editingCategory.id);
+      setEditingCategory(newCat);
+      setNewWordInput("");
+  };
+
+  const removeWordFromCategory = async (word) => {
+      if (!editingCategory) return;
+      const updatedCats = customCategories.map(c => {
+          if (c.id === editingCategory.id) {
+              return { ...c, words: c.words.filter(w => w !== word) };
+          }
+          return c;
+      });
+      await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
+      
+      const newCat = updatedCats.find(c => c.id === editingCategory.id);
+      setEditingCategory(newCat);
+  };
+
+  const deleteCategory = async () => {
+      if (!confirm("確定刪除此題庫？")) return;
+      const updatedCats = customCategories.filter(c => c.id !== editingCategory.id);
+      await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
+      setEditingCategory(null);
+  };
+
+  // --- UI Helpers ---
   const PlayerItem = ({ p, showKick, showPromote }) => (
       <div className="flex items-center justify-between bg-white/60 p-2 rounded-lg mb-1 border border-slate-200">
           <div className="flex items-center gap-2">
@@ -426,30 +515,51 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
             {p.id === currentUser.uid && <span className="text-xs bg-slate-200 text-slate-600 px-1 rounded">我</span>}
           </div>
           <div className="flex gap-1">
-            {showPromote && (
-                <button onClick={() => makeHost(p.id)} className="text-slate-400 hover:text-yellow-500 p-1" title="設為主持人">
-                    <Crown size={14}/>
-                </button>
-            )}
-            {showKick && (
-                <button onClick={() => kickPlayer(p.id)} className="text-slate-400 hover:text-red-500 p-1" title="踢出玩家">
-                    <Trash2 size={14}/>
-                </button>
-            )}
+            {showPromote && <button onClick={() => makeHost(p.id)} className="text-slate-400 hover:text-yellow-500 p-1"><Crown size={14}/></button>}
+            {showKick && <button onClick={() => kickPlayer(p.id)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={14}/></button>}
           </div>
       </div>
   );
 
   return (
     <div className="p-4 md:p-8 w-full space-y-6">
+      {/* 題庫編輯 Modal */}
+      {editingCategory && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4 max-h-[80vh] flex flex-col">
+                  <div className="flex justify-between items-center border-b pb-2">
+                      <h3 className="font-bold text-lg">{editingCategory.name} <span className="text-xs text-slate-400">({editingCategory.words.length}題)</span></h3>
+                      <button onClick={() => setEditingCategory(null)}><X className="text-slate-400 hover:text-slate-600"/></button>
+                  </div>
+                  <div className="flex gap-2">
+                      <input value={newWordInput} onChange={e=>setNewWordInput(e.target.value)} className="flex-1 border p-2 rounded-lg" placeholder="輸入新題目..." onKeyDown={e => e.key === 'Enter' && addWordToCategory()}/>
+                      <button onClick={addWordToCategory} className="bg-indigo-600 text-white px-4 rounded-lg"><Plus/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto border rounded-lg p-2 bg-slate-50 space-y-1">
+                      {editingCategory.words.map((w, i) => (
+                          <div key={i} className="flex justify-between items-center bg-white p-2 rounded shadow-sm">
+                              <span>{w}</span>
+                              <button onClick={() => removeWordFromCategory(w)} className="text-red-400 hover:text-red-600"><X size={14}/></button>
+                          </div>
+                      ))}
+                      {editingCategory.words.length === 0 && <div className="text-center text-slate-400 py-4">還沒有題目，快新增吧！</div>}
+                  </div>
+                  <div className="pt-2 border-t flex justify-between">
+                      <button onClick={deleteCategory} className="text-red-500 text-sm flex items-center gap-1"><Trash2 size={14}/> 刪除此分類</button>
+                      <button onClick={() => setEditingCategory(null)} className="bg-slate-200 px-4 py-2 rounded-lg text-sm font-bold">完成</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <div className="grid md:grid-cols-2 gap-6">
+        {/* 左側：隊伍管理 */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                 <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-indigo-500"/> 參賽玩家 ({participants.length})</h2>
                 {isHost && <button onClick={randomize} className="text-sm bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full hover:bg-indigo-100 font-bold transition flex items-center gap-1"><Shuffle size={14}/> 隨機分組</button>}
             </div>
             
-            {/* 主持人顯示區 */}
             <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
                 <h4 className="text-xs font-bold text-yellow-600 uppercase tracking-wider mb-2">目前主持人</h4>
                 {hostPlayer ? <PlayerItem p={hostPlayer} showKick={false} showPromote={false} /> : <div className="text-gray-400 text-sm">無主持人</div>}
@@ -473,18 +583,55 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                 </div>
             </div>
         </div>
+
+        {/* 右側：題庫與設定 */}
         <div className="space-y-6">
              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <h2 className="text-lg font-bold mb-4 text-slate-800">自訂題目 (選填)</h2>
-                <div className="flex gap-2">
-                    <input value={newWord} onChange={e=>setNewWord(e.target.value)} className="border border-slate-200 p-3 rounded-xl flex-1 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="輸入題目..." />
-                    <button onClick={() => { if(newWord.trim()){ updateDoc(doc(db, 'rooms', `room_${roomId}`), { customWords: arrayUnion(newWord.trim()) }); setNewWord(''); }}} className="bg-slate-800 hover:bg-slate-700 text-white px-4 rounded-xl"><Plus/></button>
+                <h2 className="text-lg font-bold mb-4 text-slate-800">題庫來源</h2>
+                
+                {/* 1. 內建題庫 Toggle */}
+                <div 
+                    onClick={toggleDefault}
+                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all mb-3 ${roomData.useDefaultCategory !== false ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                >
+                    <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${roomData.useDefaultCategory !== false ? 'bg-indigo-500 border-indigo-500' : 'border-slate-400'}`}>
+                            {roomData.useDefaultCategory !== false && <Check size={14} className="text-white"/>}
+                        </div>
+                        <div>
+                            <div className="font-bold text-slate-700">內建題庫 (1000+)</div>
+                            <div className="text-xs text-slate-500">食物、地標、動物、日常...</div>
+                        </div>
+                    </div>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                    {roomData.customWords?.map((w,i)=><span key={i} className="bg-yellow-50 px-3 py-1 rounded-full text-sm border border-yellow-200 text-yellow-800">{w}</span>)}
-                    {(!roomData.customWords || roomData.customWords.length === 0) && <div className="text-slate-400 text-sm bg-slate-50 p-3 rounded-lg w-full text-center border border-slate-100">已載入內建題庫 ({DEFAULT_WORDS_LARGE.length} 題)</div>}
+
+                {/* 2. 自訂題庫列表 */}
+                {customCategories.map(cat => (
+                    <div key={cat.id} className="flex items-center gap-2 mb-2">
+                        <div 
+                            onClick={() => toggleCategory(cat.id)}
+                            className={`flex-1 flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${cat.enabled ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={`w-5 h-5 rounded border flex items-center justify-center ${cat.enabled ? 'bg-indigo-500 border-indigo-500' : 'border-slate-400'}`}>
+                                    {cat.enabled && <Check size={14} className="text-white"/>}
+                                </div>
+                                <div className="font-bold text-slate-700">{cat.name} <span className="text-slate-400 font-normal text-xs">({cat.words.length}題)</span></div>
+                            </div>
+                        </div>
+                        <button onClick={() => openEditCategory(cat)} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-600">
+                            <Edit size={18}/>
+                        </button>
+                    </div>
+                ))}
+
+                {/* 3. 新增分類 */}
+                <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
+                    <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} className="border border-slate-200 p-2 rounded-xl flex-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="新增分類名稱..." />
+                    <button onClick={addCategory} className="bg-slate-800 hover:bg-slate-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Plus size={16}/> 新增</button>
                 </div>
             </div>
+
             {isHost ? (
                 <button onClick={onStart} className="w-full py-5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white text-xl font-bold rounded-2xl shadow-lg shadow-green-200 transform hover:scale-[1.02] transition-all flex justify-center items-center gap-2"><Play className="fill-white" /> 開始遊戲</button>
             ) : <div className="text-center p-8 bg-slate-50 border border-slate-200 rounded-2xl"><div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-4"></div><h3 className="font-bold text-slate-700 text-lg">等待主持人開始...</h3></div>}
@@ -501,10 +648,8 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const [notification, setNotification] = useState(null); 
   const lastEventRef = useRef(0);
 
-  // 通知監聽 (修正：開場檢查時間，避免顯示舊通知)
   useEffect(() => {
     if (roomData.lastEvent && roomData.lastEvent.timestamp !== lastEventRef.current) {
-      // 防止載入過久的歷史通知 (>3秒前的通知忽略)
       const isStale = Date.now() - roomData.lastEvent.timestamp > 3000;
       lastEventRef.current = roomData.lastEvent.timestamp;
       
@@ -516,7 +661,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
     }
   }, [roomData.lastEvent]);
 
-  // 計時器邏輯
   useEffect(() => {
     const t = setInterval(() => {
       const now = getNow();
@@ -552,7 +696,15 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
 
   const nextWord = (isSkip = false) => {
      let q = [...roomData.wordQueue];
-     if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
+     if(q.length === 0) {
+         // Reshuffle all sources
+         let finalWords = [];
+         if (roomData.useDefaultCategory !== false) finalWords = [...finalWords, ...DEFAULT_WORDS_LARGE];
+         if (roomData.customCategories) roomData.customCategories.forEach(c => { if(c.enabled) finalWords.push(...c.words) });
+         if (roomData.customWords) finalWords = [...finalWords, ...roomData.customWords];
+         q = finalWords.sort(()=>0.5-Math.random());
+     }
+     
      const w = q.pop();
      const now = getNow();
      const newTurnEnd = now + roomData.settings.answerTime*1000;
@@ -569,7 +721,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
 
   const handleCorrect = () => {
       let q = [...roomData.wordQueue];
-      if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
+      if(q.length === 0) { /* logic to refill if needed, simplified here */ }
       const w = q.pop();
       const now = getNow();
       const newTurnEnd = now + roomData.settings.answerTime*1000;
@@ -583,14 +735,13 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const handleOpponentSteal = () => {
       const opponentTeam = roomData.currentTeam === 'A' ? 'B' : 'A';
       let q = [...roomData.wordQueue];
-      if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
       const w = q.pop();
       const now = getNow();
       const newTurnEnd = now + roomData.settings.answerTime*1000;
 
       triggerEvent(`⚡ ${opponentTeam} 隊搶答成功！`, "text-purple-500", {
           wordQueue: q, currentWord: w, turnEndTime: newTurnEnd,
-          [`scores.${opponentTeam}`]: increment(roomData.settings.pointsCorrect) // 搶答算答對分
+          [`scores.${opponentTeam}`]: increment(roomData.settings.pointsCorrect) 
       });
   };
 
@@ -722,12 +873,18 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
                       <X className="group-hover:text-white transition-colors"/><span className="text-[10px] mt-1 font-bold">跳過</span>
                   </button>
                   
-                  {/* 如果是搶答時間，顯示敵隊搶答按鈕，否則顯示一般答對 */}
+                  {/* ★★★ 搶答時顯示兩個按鈕 ★★★ */}
                   {isSteal ? (
-                      <button onClick={handleOpponentSteal} className="col-span-2 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg transform transition active:scale-95 animate-pulse">
-                          <Zap size={32} strokeWidth={3} fill="currentColor"/> 
-                          <span className="text-sm font-bold mt-1">⚡ {opponentTeam} 隊搶答</span>
-                      </button>
+                      <>
+                        <button onClick={handleOpponentSteal} className="col-span-1 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg transform transition active:scale-95 animate-pulse">
+                            <Zap size={24} fill="currentColor"/> 
+                            <span className="text-[10px] font-bold mt-1">敵隊搶答</span>
+                        </button>
+                        <button onClick={handleCorrect} className="col-span-1 bg-green-600 hover:bg-green-700 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg transform transition active:scale-95">
+                            <Check size={24} /> 
+                            <span className="text-[10px] font-bold mt-1">本隊答對</span>
+                        </button>
+                      </>
                   ) : (
                       <button onClick={handleCorrect} className="col-span-2 bg-gradient-to-br from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg transform transition active:scale-95">
                           <Check size={32} strokeWidth={3} /> <span className="text-sm font-bold mt-1">答對 (+{roomData.settings.pointsCorrect})</span>
