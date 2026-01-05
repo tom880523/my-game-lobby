@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { 
   getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, 
   arrayUnion, increment, arrayRemove, runTransaction, 
-  serverTimestamp, addDoc, collection, deleteDoc 
+  serverTimestamp, addDoc, collection, deleteDoc, getDocs, query, orderBy, limit 
 } from 'firebase/firestore';
 import { 
   Users, Play, Settings, Plus, Check, X, 
   Shuffle, AlertCircle, ClipboardCopy, Trophy, 
   Gamepad2, ArrowLeft, Construction, LogOut, Trash2, Crown,
   Eye, EyeOff, Pause, RotateCcw, Timer, Zap, Edit, ChevronRight,
-  Save, Lock, Unlock, Grid, Cloud, Download, Upload, FileText, Move
+  Save, Lock, Unlock, Grid, Cloud, Download, Upload, FileText, Move, Library,
+  LogIn, LogOut as SignOutIcon
 } from 'lucide-react';
 
 // 引入外部題庫檔案
@@ -130,6 +131,43 @@ function MainApp() {
 
 // --- 1. 大廳 ---
 function GameLobby({ onSelectGame }) {
+  const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+        setUser(u);
+        if (u && !u.isAnonymous) {
+            // ★★★ 安全檢查：去資料庫查詢是否為管理員 ★★★
+            try {
+                const adminDoc = await getDoc(doc(db, 'admins', u.uid));
+                setIsAdmin(adminDoc.exists());
+            } catch (e) {
+                console.error("Check admin failed", e);
+                setIsAdmin(false);
+            }
+        } else {
+            setIsAdmin(false);
+        }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = async () => {
+      const provider = new GoogleAuthProvider();
+      try {
+          await signInWithPopup(auth, provider);
+      } catch (error) {
+          console.error("Login failed", error);
+          alert("登入失敗: " + error.message);
+      }
+  };
+
+  const handleLogout = async () => {
+      await signOut(auth);
+      await signInAnonymously(auth);
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center relative overflow-hidden">
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
@@ -140,6 +178,21 @@ function GameLobby({ onSelectGame }) {
             <Gamepad2 className="text-indigo-400 w-8 h-8" />
             線上派對遊戲中心
          </h1>
+         <div>
+             {user && !user.isAnonymous ? (
+                 <div className="flex items-center gap-2">
+                     {isAdmin && <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded font-bold">Admin</span>}
+                     <button onClick={handleLogout} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-full text-sm transition border border-slate-700">
+                         {user.photoURL && <img src={user.photoURL} alt="user" className="w-6 h-6 rounded-full"/>}
+                         <span>登出</span>
+                     </button>
+                 </div>
+             ) : (
+                 <button onClick={handleLogin} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-full text-sm font-bold transition shadow-lg">
+                     <LogIn size={16}/> 登入 Google (啟用管理權限)
+                 </button>
+             )}
+         </div>
       </header>
       <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-4xl z-10">
         <button 
@@ -176,7 +229,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v4.0 DragDrop & Cloud Deck</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v4.4 Secure Admin</footer>
     </div>
   );
 }
@@ -191,7 +244,7 @@ const DEFAULT_SETTINGS = {
   ],
   startTeamIndex: 0,
   permissions: {
-    allowPlayerTeamSwitch: false, // 預設不允許參賽者自己換隊
+    allowPlayerTeamSwitch: false, 
     allowPlayerAddWords: false   
   }
 };
@@ -201,6 +254,8 @@ const generateId = () => Math.random().toString(36).substring(2, 10);
 
 function CharadesGame({ onBack, getNow }) {
   const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  
   const [view, setView] = useState('lobby');
   const [roomId, setRoomId] = useState('');
   const [playerName, setPlayerName] = useState('');
@@ -211,9 +266,16 @@ function CharadesGame({ onBack, getNow }) {
   const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      if (u) setUser(u);
-      else signInAnonymously(auth).catch(console.error);
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u && !u.isAnonymous) {
+          try {
+              const adminDoc = await getDoc(doc(db, 'admins', u.uid));
+              setIsAdmin(adminDoc.exists());
+          } catch (e) { setIsAdmin(false); }
+      } else {
+          setIsAdmin(false);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -253,6 +315,12 @@ function CharadesGame({ onBack, getNow }) {
       const newRoomId = generateRoomId();
       const me = { id: user.uid, name: playerName, team: null, isHost: true };
       
+      let savedDecks = [];
+      try {
+          const saved = localStorage.getItem('charades_custom_decks');
+          if (saved) savedDecks = JSON.parse(saved);
+      } catch (e) { console.error("Load local decks failed", e); }
+
       await setDoc(doc(db, 'rooms', `room_${newRoomId}`), {
         id: newRoomId, hostId: user.uid, status: 'waiting',
         players: [me],
@@ -262,7 +330,7 @@ function CharadesGame({ onBack, getNow }) {
         currentTeamId: DEFAULT_SETTINGS.teams[0].id, 
         wordQueue: [], 
         useDefaultCategory: true,
-        customCategories: [], 
+        customCategories: savedDecks, 
         currentWord: null, roundEndTime: null, turnEndTime: null, gameState: 'idle',
         lastEvent: null 
       });
@@ -315,8 +383,9 @@ function CharadesGame({ onBack, getNow }) {
     try {
       const ref = doc(db, 'rooms', `room_${roomId}`);
       const newPlayers = roomData.players.filter(p => p.id !== user.uid);
-      if (newPlayers.length === 0) await updateDoc(ref, { players: [] }); 
-      else {
+      if (newPlayers.length === 0) {
+         await deleteDoc(ref);
+      } else {
          if (roomData.hostId === user.uid) await updateDoc(ref, { players: newPlayers, hostId: newPlayers[0].id });
          else await updateDoc(ref, { players: newPlayers });
       }
@@ -345,16 +414,18 @@ function CharadesGame({ onBack, getNow }) {
           <div className="flex items-center gap-3">
              <div className="hidden md:flex flex-col items-end mr-2">
                 <span className="text-xs text-slate-400">玩家</span>
-                <span className="font-bold text-slate-700">{user.isAnonymous ? playerName : user.displayName || playerName}</span>
+                <span className="font-bold text-slate-700">
+                    {user.isAnonymous ? (playerName + " (訪客)") : (user.displayName || playerName)}
+                    {isAdmin && <span className="ml-1 text-[10px] bg-yellow-400 text-black px-1 rounded font-bold">Admin</span>}
+                </span>
              </div>
              {isHost && view === 'room' && <button onClick={() => { setLocalSettings(roomData.settings); setShowSettings(true); }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full text-sm font-medium transition"><Settings size={16} /> 設定</button>}
           </div>
        </header>
 
        <main className="flex-1 flex flex-col max-w-6xl mx-auto w-full">
-          {view === 'room' && <RoomView roomData={roomData} isHost={isHost} roomId={roomId} currentUser={user}
+          {view === 'room' && <RoomView roomData={roomData} isHost={isHost} roomId={roomId} currentUser={user} isAdmin={isAdmin}
             onStart={async () => {
-             // 收集題庫
              let finalWords = [];
              if (roomData.useDefaultCategory !== false) finalWords = [...finalWords, ...DEFAULT_WORDS_LARGE];
              if (roomData.customCategories) roomData.customCategories.forEach(c => { if(c.enabled) finalWords.push(...c.words) });
@@ -366,8 +437,6 @@ function CharadesGame({ onBack, getNow }) {
              }
 
              const shuffled = finalWords.sort(() => 0.5 - Math.random());
-             
-             // 初始化分數
              const initialScores = {};
              roomData.settings.teams.forEach(t => initialScores[t.id] = 0);
 
@@ -414,14 +483,14 @@ function LobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, creat
   );
 }
 
-function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
+function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
   const [editingCategory, setEditingCategory] = useState(null); 
   const [newCatName, setNewCatName] = useState("");
   const [newWordInput, setNewWordInput] = useState("");
   const [editingTeamName, setEditingTeamName] = useState(null);
-  const [importCode, setImportCode] = useState(""); // 用於匯入雲端題庫
+  const [importCode, setImportCode] = useState(""); 
+  const [showCloudLibrary, setShowCloudLibrary] = useState(false); 
   
-  // Drag State
   const [draggedPlayer, setDraggedPlayer] = useState(null);
 
   const players = roomData.players || [];
@@ -429,13 +498,12 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   const unassigned = participants.filter(p => !p.team); 
   const hostPlayer = players.find(p => p.id === roomData.hostId);
   const teams = roomData.settings.teams || [];
-  
   const customCategories = roomData.customCategories || [];
   
-  // 權限檢查
   const canSwitchTeam = isHost || roomData.settings.permissions.allowPlayerTeamSwitch;
   const canAddWords = isHost || roomData.settings.permissions.allowPlayerAddWords;
 
+  // ... (保留原本的 helper functions)
   const randomize = async () => {
     const shuffled = [...participants].sort(() => 0.5 - Math.random());
     const teamIds = teams.map(t => t.id);
@@ -466,7 +534,6 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       setEditingTeamName(null);
   };
 
-  // --- 拖曳功能 ---
   const handleDragStart = (e, player) => {
       if (!isHost) return;
       setDraggedPlayer(player);
@@ -490,7 +557,6 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       setDraggedPlayer(null);
   };
 
-  // --- 題庫管理 ---
   const toggleDefault = async () => {
       if (!isHost) return;
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { useDefaultCategory: !roomData.useDefaultCategory });
@@ -550,31 +616,37 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       setEditingCategory(null);
   };
 
-  // 雲端功能
   const saveDeckToCloud = async () => {
       if (!editingCategory) return;
+      // ★★★ 權限檢查：只有名單內的管理員可上傳 ★★★
+      if (!isAdmin) return alert("權限不足：您必須是管理員才能上傳題庫到雲端！");
+      
       try {
           const docRef = await addDoc(collection(db, 'public_decks'), {
               name: editingCategory.name,
               words: editingCategory.words,
-              createdAt: serverTimestamp()
+              createdAt: serverTimestamp(),
+              creatorId: currentUser.uid,
+              creatorEmail: currentUser.email 
           });
-          alert(`題庫已上傳！請記住此代碼以在其他裝置匯入：\n\n${docRef.id}`);
+          alert(`題庫已上傳！代碼：\n${docRef.id}`);
       } catch (e) {
           alert("上傳失敗：" + e.message);
       }
   };
 
-  const importDeckFromCloud = async () => {
-      if (!importCode.trim()) return;
+  const importDeckFromCloud = async (code = null) => {
+      const targetCode = code || importCode;
+      if (!targetCode.trim()) return;
       try {
-          const deckDoc = await getDoc(doc(db, 'public_decks', importCode.trim()));
+          const deckDoc = await getDoc(doc(db, 'public_decks', targetCode.trim()));
           if (deckDoc.exists()) {
               const deck = deckDoc.data();
               const newCat = { id: generateId(), name: deck.name, words: deck.words || [], enabled: true };
               await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: [...customCategories, newCat] });
-              alert(`成功匯入題庫：${deck.name} (${deck.words?.length} 題)`);
+              alert(`成功匯入：${deck.name} (${deck.words?.length} 題)`);
               setImportCode("");
+              setShowCloudLibrary(false);
           } else {
               alert("找不到此代碼的題庫");
           }
@@ -583,21 +655,18 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       }
   };
 
-  // CSV 匯入
   const handleCSVUpload = (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = async (evt) => {
           const text = evt.target.result;
-          // 分割逗號或換行
           const words = text.split(/[,\n\r]+/).map(w => w.trim()).filter(w => w.length > 0);
           if (words.length === 0) return alert("檔案內沒有內容");
           
           if (!editingCategory) return;
           const updatedCats = customCategories.map(c => {
               if (c.id === editingCategory.id) {
-                  // 去除重複並合併
                   const uniqueWords = [...new Set([...c.words, ...words])];
                   return { ...c, words: uniqueWords };
               }
@@ -611,10 +680,8 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       reader.readAsText(file);
   };
 
-  // --- UI Helpers ---
   const PlayerItem = ({ p, showKick, showPromote }) => {
       const [showMoveMenu, setShowMoveMenu] = useState(false);
-      
       return (
         <div 
             className={`relative flex items-center justify-between bg-white/60 p-2 rounded-lg mb-1 border border-slate-200 ${isHost ? 'cursor-grab active:cursor-grabbing hover:bg-white/80' : ''}`}
@@ -631,8 +698,6 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                 {showPromote && <button onClick={(e) => {e.stopPropagation(); makeHost(p.id)}} className="text-slate-400 hover:text-yellow-500 p-1"><Crown size={14}/></button>}
                 {showKick && <button onClick={(e) => {e.stopPropagation(); kickPlayer(p.id)}} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={14}/></button>}
             </div>
-
-            {/* 手機版/點擊移動選單 */}
             {showMoveMenu && isHost && (
                 <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg z-50 p-2 min-w-[150px]">
                     <div className="text-xs font-bold text-slate-400 mb-1 px-2">移動至...</div>
@@ -650,6 +715,17 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
 
   return (
     <div className="p-4 md:p-8 w-full space-y-6">
+      {/* 雲端圖書館 Modal */}
+      {showCloudLibrary && (
+          <CloudLibraryModal 
+            onClose={() => setShowCloudLibrary(false)} 
+            onImport={importDeckFromCloud} 
+            db={db}
+            currentUser={currentUser}
+            isAdmin={isAdmin}
+          />
+      )}
+
       {/* 題庫編輯 Modal */}
       {editingCategory && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -662,25 +738,22 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                       </h3>
                       <button onClick={() => setEditingCategory(null)}><X className="text-slate-400 hover:text-slate-600"/></button>
                   </div>
-                  
-                  {/* 新增題目輸入 */}
                   <div className="flex gap-2">
                       <input value={newWordInput} onChange={e=>setNewWordInput(e.target.value)} className="flex-1 border p-2 rounded-lg text-sm" placeholder="輸入新題目..." onKeyDown={e => e.key === 'Enter' && addWordToCategory()}/>
                       <button onClick={addWordToCategory} className="bg-indigo-600 text-white px-3 rounded-lg"><Plus/></button>
                   </div>
-
-                  {/* 工具列 */}
                   <div className="flex gap-2 text-xs overflow-x-auto pb-2">
                       <label className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg cursor-pointer whitespace-nowrap">
                           <FileText size={14}/> 匯入 CSV
                           <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVUpload}/>
                       </label>
-                      <button onClick={saveDeckToCloud} className="flex items-center gap-1 bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-2 rounded-lg whitespace-nowrap">
-                          <Cloud size={14}/> 上傳雲端
-                      </button>
+                      {/* ★★★ 只有管理員看得到上傳按鈕 ★★★ */}
+                      {isAdmin && (
+                          <button onClick={saveDeckToCloud} className="flex items-center gap-1 bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-2 rounded-lg whitespace-nowrap">
+                              <Cloud size={14}/> 上傳雲端 (管理員)
+                          </button>
+                      )}
                   </div>
-
-                  {/* 題目列表 */}
                   <div className="flex-1 overflow-y-auto border rounded-lg p-2 bg-slate-50 space-y-1">
                       {editingCategory.words.map((w, i) => (
                           <div key={i} className="flex justify-between items-center bg-white p-2 rounded shadow-sm group">
@@ -690,7 +763,6 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                       ))}
                       {editingCategory.words.length === 0 && <div className="text-center text-slate-400 py-4">還沒有題目，快新增吧！</div>}
                   </div>
-                  
                   <div className="pt-2 border-t flex justify-between">
                       {isHost ? <button onClick={deleteCategory} className="text-red-500 text-sm flex items-center gap-1"><Trash2 size={14}/> 刪除</button> : <div></div>}
                       <button onClick={() => setEditingCategory(null)} className="bg-slate-800 text-white px-6 py-2 rounded-lg text-sm font-bold">完成</button>
@@ -699,6 +771,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
           </div>
       )}
 
+      {/* Grid 佈局內容 (隊伍、題庫) 與之前相同，略微省略以節省篇幅 */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* 左側：隊伍管理 */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
@@ -824,11 +897,14 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
                             <button onClick={addCategory} className="bg-slate-800 hover:bg-slate-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Plus size={16}/> 新增</button>
                         </div>
                         
-                        {/* 雲端匯入 */}
                         <div className="flex gap-2">
                             <input value={importCode} onChange={e=>setImportCode(e.target.value)} className="border border-slate-200 p-2 rounded-xl flex-1 focus:ring-2 focus:ring-sky-500 outline-none text-sm" placeholder="輸入雲端題庫代碼..." />
-                            <button onClick={importDeckFromCloud} className="bg-sky-600 hover:bg-sky-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Download size={16}/> 下載</button>
+                            <button onClick={() => importDeckFromCloud()} className="bg-sky-600 hover:bg-sky-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Download size={16}/> 下載</button>
                         </div>
+
+                        <button onClick={() => setShowCloudLibrary(true)} className="w-full mt-2 bg-gradient-to-r from-sky-500 to-indigo-500 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition">
+                            <Library size={18}/> 瀏覽雲端題庫圖書館
+                        </button>
                     </div>
                 )}
             </div>
@@ -840,6 +916,94 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       </div>
     </div>
   );
+}
+
+// ★★★ 雲端題庫圖書館 (New) ★★★
+function CloudLibraryModal({ onClose, onImport, db, currentUser, isAdmin }) {
+    const [decks, setDecks] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchDecks = async () => {
+            try {
+                // 讀取所有公開題庫 (實際應用可能需要分頁)
+                const q = query(collection(db, 'public_decks'), orderBy('createdAt', 'desc'), limit(20));
+                const snapshot = await getDocs(q);
+                const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setDecks(list);
+            } catch (e) {
+                console.error("Fetch decks error:", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDecks();
+    }, [db]);
+
+    const deleteDeck = async (deckId) => {
+        // ★★★ 權限檢查：只有管理員能刪除 ★★★
+        if (!isAdmin) return alert("權限不足：只有指定管理員可以刪除雲端題庫！");
+        if (!window.confirm("確定要從雲端永久刪除此題庫嗎？")) return;
+        try {
+            await deleteDoc(doc(db, 'public_decks', deckId));
+            setDecks(decks.filter(d => d.id !== deckId));
+        } catch (e) {
+            alert("刪除失敗");
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-2xl rounded-2xl p-6 shadow-2xl flex flex-col max-h-[80vh] animate-in zoom-in duration-200">
+                <div className="flex justify-between items-center border-b pb-4 mb-4">
+                    <h3 className="font-bold text-2xl flex items-center gap-2 text-slate-800">
+                        <Cloud className="text-sky-500"/> 雲端題庫圖書館
+                    </h3>
+                    <button onClick={onClose}><X className="text-slate-400 hover:text-slate-600"/></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                    {loading ? (
+                        <div className="text-center py-10 text-slate-400">載入中...</div>
+                    ) : decks.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400">目前沒有公開題庫</div>
+                    ) : (
+                        decks.map(deck => (
+                            <div key={deck.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center hover:shadow-md transition">
+                                <div>
+                                    <h4 className="font-bold text-lg text-slate-800">{deck.name}</h4>
+                                    <div className="text-sm text-slate-500 flex gap-3">
+                                        <span>題目數: {deck.words?.length || 0}</span>
+                                        <span className="font-mono bg-slate-200 px-1 rounded text-xs">ID: {deck.id}</span>
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-1">上傳者: {deck.creatorEmail || "未知"}</div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => onImport(deck.id)}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1"
+                                    >
+                                        <Download size={16}/> 下載
+                                    </button>
+                                    
+                                    {/* ★★★ 只有管理員看得到刪除按鈕 ★★★ */}
+                                    {isAdmin && (
+                                        <button 
+                                            onClick={() => deleteDeck(deck.id)}
+                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                            title="刪除 (管理員專用)"
+                                        >
+                                            <Trash2 size={18}/>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 // ★★★ 核心遊戲介面 ★★★
@@ -968,12 +1132,10 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   };
 
   const switchTeam = () => {
-     // 循環切換隊伍
      const currentIdx = teams.findIndex(t => t.id === currentTeam.id);
      const nextIdx = (currentIdx + 1) % teams.length;
      const nextTeam = teams[nextIdx];
      
-     // 只有當回到第一隊時，回合數 +1
      const nextRound = nextIdx === 0 ? roomData.currentRound + 1 : roomData.currentRound;
      
      if(nextRound > roomData.settings.totalRounds) updateGame({ status: 'finished' });
