@@ -3,13 +3,14 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, 
-  arrayUnion, increment, arrayRemove, runTransaction 
+  arrayUnion, increment, arrayRemove, runTransaction, 
+  serverTimestamp, addDoc, collection, deleteDoc 
 } from 'firebase/firestore';
 import { 
   Users, Play, Settings, Plus, Check, X, 
   Shuffle, AlertCircle, ClipboardCopy, Trophy, 
   Gamepad2, ArrowLeft, Construction, LogOut, Trash2, Crown,
-  Eye, EyeOff, Pause, RotateCcw, Timer
+  Eye, EyeOff, Pause, RotateCcw, Timer, FastForward, UserCheck
 } from 'lucide-react';
 
 // =================================================================
@@ -37,7 +38,7 @@ try {
   initError = e.message;
 }
 
-// --- 預設超大題庫 (精選多樣化題目) ---
+// --- 預設超大題庫 ---
 const DEFAULT_WORDS_LARGE = [
   "珍珠奶茶", "臭豆腐", "牛肉麵", "小籠包", "滷肉飯", "雞排", "鳳梨酥", "火鍋", "生魚片", "披薩", "漢堡", "薯條", "冰淇淋", "巧克力", "西瓜", "香蕉", "榴槤", "苦瓜", "荷包蛋", "爆米花", "芒果冰", "蚵仔煎", "豬血糕", "大腸包小腸", "潤餅", "肉圓", "太陽餅", "鐵蛋", "豆花", "燒仙草", "可樂", "咖啡", "壽司", "義大利麵", "牛排",
   "台北101", "夜市", "迪士尼樂園", "便利商店", "動物園", "機場", "醫院", "學校", "圖書館", "電影院", "健身房", "游泳池", "外太空", "金字塔", "萬里長城", "艾菲爾鐵塔", "自由女神", "北極", "鬼屋", "監獄", "麥當勞", "肯德基", "星巴克", "捷運站", "加油站", "月球", "火星", "沙漠", "玉山", "日月潭",
@@ -87,6 +88,41 @@ export default function App() {
 
 function MainApp() {
   const [currentApp, setCurrentApp] = useState('home');
+  const [serverTimeOffset, setServerTimeOffset] = useState(0);
+
+  // 初始化時計算時間差 (Time Sync)
+  useEffect(() => {
+    const syncTime = async () => {
+      try {
+        // 1. 寫入一個暫時文件，包含 Server Timestamp
+        const tempDocRef = await addDoc(collection(db, 'time_sync'), {
+          timestamp: serverTimestamp()
+        });
+        
+        // 2. 監聽該文件以獲取 Server 寫入的時間
+        const unsubscribe = onSnapshot(tempDocRef, (snap) => {
+          if (snap.exists() && snap.data().timestamp) {
+            const serverTime = snap.data().timestamp.toMillis();
+            const localTime = Date.now();
+            const offset = serverTime - localTime;
+            console.log("Server Time Offset:", offset, "ms");
+            setServerTimeOffset(offset);
+            
+            // 清理
+            unsubscribe();
+            deleteDoc(tempDocRef);
+          }
+        });
+      } catch (e) {
+        console.error("Time sync failed:", e);
+      }
+    };
+    
+    if (db) syncTime();
+  }, []);
+
+  // 封裝一個取得「現在校正後時間」的函式
+  const getNow = () => Date.now() + serverTimeOffset;
 
   if (initError) {
     return (
@@ -101,7 +137,7 @@ function MainApp() {
   }
 
   if (currentApp === 'home') return <GameLobby onSelectGame={setCurrentApp} />;
-  if (currentApp === 'charades') return <CharadesGame onBack={() => setCurrentApp('home')} />;
+  if (currentApp === 'charades') return <CharadesGame onBack={() => setCurrentApp('home')} getNow={getNow} />;
   return null;
 }
 
@@ -137,6 +173,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         </button>
 
+        {/* 佔位卡片 */}
         {[
           { icon: <Construction />, title: "間諜家家酒", desc: "誰是臥底？開發中..." },
           { icon: <Construction />, title: "你畫我猜", desc: "靈魂繪師大顯身手..." }
@@ -152,7 +189,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.3 Sync & Pause Update</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v2.4 Host & Time Sync</footer>
     </div>
   );
 }
@@ -165,7 +202,7 @@ const DEFAULT_SETTINGS = {
 
 const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
-function CharadesGame({ onBack }) {
+function CharadesGame({ onBack, getNow }) {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('lobby');
   const [roomId, setRoomId] = useState('');
@@ -224,7 +261,7 @@ function CharadesGame({ onBack }) {
         settings: DEFAULT_SETTINGS, scores: { A: 0, B: 0 },
         currentRound: 1, currentTeam: 'A', wordQueue: [], customWords: [],
         currentWord: null, roundEndTime: null, turnEndTime: null, gameState: 'idle',
-        lastEvent: null // 用於顯示通知事件
+        lastEvent: null 
       });
       setRoomId(newRoomId);
       setView('room');
@@ -320,7 +357,7 @@ function CharadesGame({ onBack }) {
                currentRound: 1, currentTeam: roomData.settings.startTeam, gameState: 'idle', currentWord: null, roundEndTime: null, turnEndTime: null
              });
           }} />}
-          {view === 'game' && <GameInterface roomData={roomData} isHost={isHost} roomId={roomId} previewAsPlayer={previewAsPlayer} setPreviewAsPlayer={setPreviewAsPlayer} />}
+          {view === 'game' && <GameInterface roomData={roomData} isHost={isHost} roomId={roomId} previewAsPlayer={previewAsPlayer} setPreviewAsPlayer={setPreviewAsPlayer} getNow={getNow} />}
           {view === 'result' && <ResultView roomData={roomData} isHost={isHost} roomId={roomId} />}
        </main>
 
@@ -329,7 +366,7 @@ function CharadesGame({ onBack }) {
   );
 }
 
-// --- Extracted Components for Cleanliness ---
+// --- Components ---
 
 function LobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, createRoom, joinRoom, loading, user }) {
   return (
@@ -360,15 +397,29 @@ function LobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, creat
 function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
   const [newWord, setNewWord] = useState('');
   const players = roomData.players || [];
-  const teamA = players.filter(p => p.team === 'A');
-  const teamB = players.filter(p => p.team === 'B');
-  const unassigned = players.filter(p => !p.team); 
+  // 濾掉主持人，只讓參賽者分組
+  const participants = players.filter(p => p.id !== roomData.hostId);
+  const teamA = participants.filter(p => p.team === 'A');
+  const teamB = participants.filter(p => p.team === 'B');
+  // 未分組 = 參賽者中沒有隊伍的人
+  const unassigned = participants.filter(p => !p.team); 
+  // 找出主持人資料
+  const hostPlayer = players.find(p => p.id === roomData.hostId);
   
   const randomize = async () => {
-    const shuffled = [...players].sort(() => 0.5 - Math.random());
+    // 只對「非主持人」的玩家進行隨機分組
+    const shuffled = [...participants].sort(() => 0.5 - Math.random());
     const mid = Math.ceil(shuffled.length / 2);
-    const newPlayers = shuffled.map((p, i) => ({ ...p, team: i < mid ? 'A' : 'B' }));
-    await updateDoc(doc(db, 'rooms', `room_${roomId}`), { players: newPlayers });
+    
+    // 重新組裝所有玩家列表：Host 保持原狀 (或清空 team)，其他人分 A/B
+    const newParticipants = shuffled.map((p, i) => ({ ...p, team: i < mid ? 'A' : 'B' }));
+    
+    // 如果有主持人，確保他在列表裡，且 team 為 null (不參賽)
+    const newPlayersList = hostPlayer 
+        ? [...newParticipants, { ...hostPlayer, team: null }] 
+        : newParticipants;
+
+    await updateDoc(doc(db, 'rooms', `room_${roomId}`), { players: newPlayersList });
   };
 
   const kickPlayer = async (targetId) => {
@@ -377,14 +428,30 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       await updateDoc(doc(db, 'rooms', `room_${roomId}`), { players: newPlayers });
   };
 
-  const PlayerItem = ({ p }) => (
+  const makeHost = async (targetId) => {
+      if(!window.confirm("確定要將主持人權限移交給這位玩家嗎？")) return;
+      await updateDoc(doc(db, 'rooms', `room_${roomId}`), { hostId: targetId });
+  };
+
+  const PlayerItem = ({ p, showKick, showPromote }) => (
       <div className="flex items-center justify-between bg-white/60 p-2 rounded-lg mb-1 border border-slate-200">
           <div className="flex items-center gap-2">
             <span className="text-slate-700 font-medium">{p.name}</span>
             {p.id === roomData.hostId && <Crown size={14} className="text-yellow-500 fill-yellow-500"/>}
             {p.id === currentUser.uid && <span className="text-xs bg-slate-200 text-slate-600 px-1 rounded">我</span>}
           </div>
-          {isHost && p.id !== currentUser.uid && <button onClick={() => kickPlayer(p.id)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={14}/></button>}
+          <div className="flex gap-1">
+            {showPromote && (
+                <button onClick={() => makeHost(p.id)} className="text-slate-400 hover:text-yellow-500 p-1" title="設為主持人">
+                    <Crown size={14}/>
+                </button>
+            )}
+            {showKick && (
+                <button onClick={() => kickPlayer(p.id)} className="text-slate-400 hover:text-red-500 p-1" title="踢出玩家">
+                    <Trash2 size={14}/>
+                </button>
+            )}
+          </div>
       </div>
   );
 
@@ -393,24 +460,31 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-indigo-500"/> 參賽玩家 ({players.length})</h2>
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-indigo-500"/> 參賽玩家 ({participants.length})</h2>
                 {isHost && <button onClick={randomize} className="text-sm bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full hover:bg-indigo-100 font-bold transition flex items-center gap-1"><Shuffle size={14}/> 隨機分組</button>}
             </div>
+            
+            {/* 主持人顯示區 */}
+            <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                <h4 className="text-xs font-bold text-yellow-600 uppercase tracking-wider mb-2">目前主持人</h4>
+                {hostPlayer ? <PlayerItem p={hostPlayer} showKick={false} showPromote={false} /> : <div className="text-gray-400 text-sm">無主持人</div>}
+            </div>
+
             <div className={`bg-slate-50 p-3 rounded-xl border border-dashed transition-colors ${unassigned.length>0 ? 'border-orange-300 bg-orange-50' : 'border-slate-200'}`}>
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex justify-between"><span>等待分組</span><span className="bg-slate-200 px-2 rounded-full text-slate-600">{unassigned.length}</span></h4>
                 <div className="grid grid-cols-2 gap-2">
-                    {unassigned.length === 0 && <span className="text-slate-400 text-xs italic col-span-2 text-center py-2">所有人皆已分組</span>}
-                    {unassigned.map(p => <PlayerItem key={p.id} p={p} />)}
+                    {unassigned.length === 0 && <span className="text-slate-400 text-xs italic col-span-2 text-center py-2">所有參賽者皆已分組</span>}
+                    {unassigned.map(p => <PlayerItem key={p.id} p={p} showKick={isHost && p.id !== currentUser.uid} showPromote={isHost} />)}
                 </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
                 <div className="bg-red-50/50 p-4 rounded-xl border border-red-100">
                     <h3 className="font-bold text-red-600 mb-3 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500"></div> A 隊</h3>
-                    <div className="space-y-1">{teamA.map(p => <PlayerItem key={p.id} p={p} />)}</div>
+                    <div className="space-y-1">{teamA.map(p => <PlayerItem key={p.id} p={p} showKick={isHost && p.id !== currentUser.uid} showPromote={isHost} />)}</div>
                 </div>
                 <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                     <h3 className="font-bold text-blue-600 mb-3 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> B 隊</h3>
-                    <div className="space-y-1">{teamB.map(p => <PlayerItem key={p.id} p={p} />)}</div>
+                    <div className="space-y-1">{teamB.map(p => <PlayerItem key={p.id} p={p} showKick={isHost && p.id !== currentUser.uid} showPromote={isHost} />)}</div>
                 </div>
             </div>
         </div>
@@ -436,25 +510,28 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser}) {
 }
 
 // ★★★ 核心遊戲介面 ★★★
-function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsPlayer}) {
+function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsPlayer, getNow}) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [roundTimeLeft, setRoundTimeLeft] = useState(0);
-  const [notification, setNotification] = useState(null); // { text, color }
-  const notificationTimeoutRef = useRef(null);
+  const [notification, setNotification] = useState(null); 
+  // 記錄最後一次顯示的事件時間戳，避免重複顯示
+  const lastEventRef = useRef(0);
 
-  // 事件通知監聽
+  // 事件通知監聽 (修正：不依賴系統時間，只要有新事件就顯示)
   useEffect(() => {
-    if (roomData.lastEvent && roomData.lastEvent.timestamp > Date.now() - 3000) {
+    if (roomData.lastEvent && roomData.lastEvent.timestamp !== lastEventRef.current) {
       setNotification(roomData.lastEvent);
-      if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
-      notificationTimeoutRef.current = setTimeout(() => setNotification(null), 2000);
+      lastEventRef.current = roomData.lastEvent.timestamp;
+      
+      const timer = setTimeout(() => setNotification(null), 2000);
+      return () => clearTimeout(timer);
     }
   }, [roomData.lastEvent]);
 
-  // 計時器邏輯 (含暫停與校正)
+  // 計時器邏輯 (使用 getNow() 進行同步)
   useEffect(() => {
     const t = setInterval(() => {
-      const now = Date.now();
+      const now = getNow(); // 使用校正後的時間
       
       // 題目計時
       if (roomData.gameState === 'paused' && roomData.savedState) {
@@ -477,15 +554,15 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
       }
     }, 100);
     return () => clearInterval(t);
-  }, [roomData]);
+  }, [roomData, getNow]); // 相依 getNow 確保時間正確
 
   const updateGame = (data) => updateDoc(doc(db, 'rooms', `room_${roomId}`), data);
   
-  // 觸發全場通知事件
+  // 觸發全場通知事件 (加上亂數後綴確保每次都是新物件)
   const triggerEvent = (text, color, extraData = {}) => {
     updateGame({
       ...extraData,
-      lastEvent: { text, color, timestamp: Date.now() }
+      lastEvent: { text, color, timestamp: Date.now() + Math.random() }
     });
   };
 
@@ -494,8 +571,9 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
      if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
      const w = q.pop();
      
-     // 決定下個狀態
-     const newTurnEnd = Date.now() + roomData.settings.answerTime*1000;
+     // 這裡用 getNow() 確保 host 設定的時間是同步後的 server 時間
+     const now = getNow();
+     const newTurnEnd = now + roomData.settings.answerTime*1000;
      
      if (isSkip) {
         triggerEvent("跳過！扣分", "text-red-500", { 
@@ -503,7 +581,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
             [`scores.${roomData.currentTeam}`]: increment(roomData.settings.pointsSkip)
         });
      } else {
-        // 只是下一題(答對或無分)
         updateGame({ wordQueue: q, currentWord: w, turnEndTime: newTurnEnd });
      }
   };
@@ -512,7 +589,8 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
       let q = [...roomData.wordQueue];
       if(q.length === 0) q = [...DEFAULT_WORDS_LARGE, ...roomData.customWords].sort(()=>0.5-Math.random());
       const w = q.pop();
-      const newTurnEnd = Date.now() + roomData.settings.answerTime*1000;
+      const now = getNow();
+      const newTurnEnd = now + roomData.settings.answerTime*1000;
 
       triggerEvent(`${roomData.currentTeam} 隊得分！`, "text-green-500", {
           wordQueue: q, currentWord: w, turnEndTime: newTurnEnd,
@@ -521,7 +599,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   };
 
   const pauseGame = () => {
-      const now = Date.now();
+      const now = getNow();
       const remainingTurn = roomData.turnEndTime ? roomData.turnEndTime - now : 0;
       const remainingRound = roomData.roundEndTime ? roomData.roundEndTime - now : 0;
       
@@ -532,7 +610,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   };
 
   const resumeGame = () => {
-      const now = Date.now();
+      const now = getNow();
       const newTurnEnd = now + (roomData.savedState?.remainingTurn || 0);
       const newRoundEnd = now + (roomData.savedState?.remainingRound || 0);
       
@@ -545,7 +623,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   };
 
   const resetRound = () => {
-      if(!window.confirm("確定要重置本回合嗎？分數不會歸零，但時間會重置。")) return;
+      if(!window.confirm("確定要重置本回合嗎？")) return;
       updateGame({
           gameState: 'idle',
           roundEndTime: null,
@@ -559,6 +637,11 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
      let nextRound = roomData.currentRound + (roomData.currentTeam === 'B' ? 1 : 0); 
      if(nextRound > roomData.settings.totalRounds) updateGame({ status: 'finished' });
      else updateGame({ currentTeam: nextTeam, currentRound: nextRound, gameState: 'idle', currentWord: null, roundEndTime: null, turnEndTime: null });
+  };
+
+  const forceEndGame = () => {
+      if(!window.confirm("確定要提前結束遊戲並結算分數嗎？")) return;
+      updateGame({ status: 'finished' });
   };
 
   const isSteal = timeLeft > 0 && timeLeft <= roomData.settings.stealTime;
@@ -633,7 +716,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
                     輪到 <span className={roomData.currentTeam === 'A' ? 'text-red-400' : 'text-blue-400'}>{roomData.currentTeam} 隊</span>
                 </h2>
                 {showControls ? <button onClick={() => {
-                   const now = Date.now();
+                   const now = getNow();
                    const roundEnd = (roomData.roundEndTime && roomData.roundEndTime > now) ? roomData.roundEndTime : now + roomData.settings.roundDuration * 1000;
                    updateGame({ gameState: 'active', roundEndTime: roundEnd });
                    nextWord();
@@ -667,7 +750,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
                     <button onClick={switchTeam} className="px-8 py-3 bg-amber-500 hover:bg-amber-600 rounded-xl text-slate-900 font-bold shadow-lg">切換下一隊</button>
                 </div>
             ) : roomData.gameState === 'active' || roomData.gameState === 'paused' ? (
-               <div className="grid grid-cols-5 gap-3 max-w-2xl mx-auto h-20">
+               <div className="grid grid-cols-6 gap-2 max-w-3xl mx-auto h-20">
                   <button onClick={() => nextWord(true)} className="bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-2xl flex flex-col items-center justify-center transition active:scale-95 group">
                       <X className="group-hover:text-white transition-colors"/><span className="text-[10px] mt-1 font-bold">跳過</span>
                   </button>
@@ -689,6 +772,11 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
                       )}
                       <button onClick={resetRound} className="flex-1 bg-slate-600 rounded-lg flex items-center justify-center text-xs" title="重置"><RotateCcw size={16}/></button>
                   </div>
+
+                  {/* 提前結算按鈕 */}
+                  <button onClick={forceEndGame} className="bg-red-900/50 hover:bg-red-800 border border-red-700 text-red-200 rounded-2xl flex flex-col items-center justify-center text-[10px] font-bold" title="提前結束遊戲">
+                      <Trophy size={16} className="mb-1"/> 提前<br/>結算
+                  </button>
                </div>
             ) : null}
          </div>
