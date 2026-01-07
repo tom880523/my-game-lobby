@@ -4,7 +4,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, sig
 import { 
   getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, 
   arrayUnion, increment, arrayRemove, runTransaction, 
-  serverTimestamp, addDoc, collection, deleteDoc, getDocs, query, orderBy, limit 
+  serverTimestamp, addDoc, collection, deleteDoc, getDocs, query, orderBy, limit, where 
 } from 'firebase/firestore';
 import { 
   Users, Play, Settings, Plus, Check, X, 
@@ -138,14 +138,10 @@ function GameLobby({ onSelectGame }) {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
         setUser(u);
         if (u && !u.isAnonymous) {
-            // ★★★ 安全檢查：去資料庫查詢是否為管理員 ★★★
             try {
                 const adminDoc = await getDoc(doc(db, 'admins', u.uid));
                 setIsAdmin(adminDoc.exists());
-            } catch (e) {
-                console.error("Check admin failed", e);
-                setIsAdmin(false);
-            }
+            } catch (e) { setIsAdmin(false); }
         } else {
             setIsAdmin(false);
         }
@@ -229,7 +225,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v4.5 Secure Admin (Firestore)</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.0 Full Control</footer>
     </div>
   );
 }
@@ -436,6 +432,7 @@ function CharadesGame({ onBack, getNow }) {
                  return;
              }
 
+             // 不重複邏輯：使用 sort 隨機洗牌，依序取出，直到隊列為空
              const shuffled = finalWords.sort(() => 0.5 - Math.random());
              const initialScores = {};
              roomData.settings.teams.forEach(t => initialScores[t.id] = 0);
@@ -577,7 +574,11 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
   };
 
   const openEditCategory = (cat) => {
-      if (!isHost && !canAddWords) return alert("主持人未開放新增題目");
+      // 權限判斷：非主持人，必須要「允許加題」且「該題庫已勾選啟用」
+      if (!isHost) {
+          if (!canAddWords) return alert("主持人未開放新增題目");
+          if (!cat.enabled) return alert("只能新增題目到目前已啟用的題庫中");
+      }
       setEditingCategory(cat);
   };
 
@@ -622,14 +623,33 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
       if (!isAdmin) return alert("權限不足：您必須是管理員才能上傳題庫到雲端！");
       
       try {
-          const docRef = await addDoc(collection(db, 'public_decks'), {
-              name: editingCategory.name,
-              words: editingCategory.words,
-              createdAt: serverTimestamp(),
-              creatorId: currentUser.uid,
-              creatorEmail: currentUser.email 
-          });
-          alert(`題庫已上傳！代碼：\n${docRef.id}`);
+          // 檢查是否有同名題庫 (覆蓋邏輯)
+          const q = query(collection(db, 'public_decks'), where("name", "==", editingCategory.name));
+          const snapshot = await getDocs(q);
+          
+          let docRef;
+          if (!snapshot.empty) {
+              const confirmOverwrite = window.confirm(`雲端已存在同名題庫「${editingCategory.name}」，確定要覆蓋嗎？`);
+              if (!confirmOverwrite) return;
+              
+              const existingDoc = snapshot.docs[0];
+              await updateDoc(doc(db, 'public_decks', existingDoc.id), {
+                  words: editingCategory.words,
+                  updatedAt: serverTimestamp(),
+                  creatorId: currentUser.uid // 更新擁有者
+              });
+              docRef = existingDoc;
+              alert(`題庫「${editingCategory.name}」已更新！代碼：\n${docRef.id}`);
+          } else {
+              docRef = await addDoc(collection(db, 'public_decks'), {
+                  name: editingCategory.name,
+                  words: editingCategory.words,
+                  createdAt: serverTimestamp(),
+                  creatorId: currentUser.uid,
+                  creatorEmail: currentUser.email 
+              });
+              alert(`題庫已上傳！代碼：\n${docRef.id}`);
+          }
       } catch (e) {
           alert("上傳失敗：" + e.message);
       }
@@ -738,32 +758,43 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
                       </h3>
                       <button onClick={() => setEditingCategory(null)}><X className="text-slate-400 hover:text-slate-600"/></button>
                   </div>
+                  
+                  {/* 新增題目輸入 */}
                   <div className="flex gap-2">
                       <input value={newWordInput} onChange={e=>setNewWordInput(e.target.value)} className="flex-1 border p-2 rounded-lg text-sm" placeholder="輸入新題目..." onKeyDown={e => e.key === 'Enter' && addWordToCategory()}/>
                       <button onClick={addWordToCategory} className="bg-indigo-600 text-white px-3 rounded-lg"><Plus/></button>
                   </div>
-                  <div className="flex gap-2 text-xs overflow-x-auto pb-2">
-                      <label className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg cursor-pointer whitespace-nowrap">
-                          <FileText size={14}/> 匯入 CSV
-                          <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVUpload}/>
-                      </label>
-                      {/* ★★★ 只有管理員看得到上傳按鈕 ★★★ */}
-                      {isAdmin && (
-                          <button onClick={saveDeckToCloud} className="flex items-center gap-1 bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-2 rounded-lg whitespace-nowrap">
-                              <Cloud size={14}/> 上傳雲端 (管理員)
-                          </button>
-                      )}
-                  </div>
+                  
+                  {/* ★★★ 工具列 (僅主持人可見) ★★★ */}
+                  {isHost && (
+                    <div className="flex gap-2 text-xs overflow-x-auto pb-2">
+                        <label className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg cursor-pointer whitespace-nowrap">
+                            <FileText size={14}/> 匯入 CSV
+                            <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVUpload}/>
+                        </label>
+                        {/* ★★★ 只有管理員看得到上傳按鈕 ★★★ */}
+                        {isAdmin && (
+                            <button onClick={saveDeckToCloud} className="flex items-center gap-1 bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-2 rounded-lg whitespace-nowrap">
+                                <Cloud size={14}/> 上傳雲端 (管理員)
+                            </button>
+                        )}
+                    </div>
+                  )}
+
                   <div className="flex-1 overflow-y-auto border rounded-lg p-2 bg-slate-50 space-y-1">
                       {editingCategory.words.map((w, i) => (
                           <div key={i} className="flex justify-between items-center bg-white p-2 rounded shadow-sm group">
                               <span>{w}</span>
-                              <button onClick={() => removeWordFromCategory(w)} className="text-slate-300 hover:text-red-500"><X size={14}/></button>
+                              {/* ★★★ 僅主持人可刪除單字 ★★★ */}
+                              {isHost && (
+                                <button onClick={() => removeWordFromCategory(w)} className="text-slate-300 hover:text-red-500"><X size={14}/></button>
+                              )}
                           </div>
                       ))}
                       {editingCategory.words.length === 0 && <div className="text-center text-slate-400 py-4">還沒有題目，快新增吧！</div>}
                   </div>
                   <div className="pt-2 border-t flex justify-between">
+                      {/* ★★★ 僅主持人可刪除分類 ★★★ */}
                       {isHost ? <button onClick={deleteCategory} className="text-red-500 text-sm flex items-center gap-1"><Trash2 size={14}/> 刪除</button> : <div></div>}
                       <button onClick={() => setEditingCategory(null)} className="bg-slate-800 text-white px-6 py-2 rounded-lg text-sm font-bold">完成</button>
                   </div>
@@ -771,7 +802,6 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
           </div>
       )}
 
-      {/* Grid 佈局內容 (隊伍、題庫) 與之前相同，略微省略以節省篇幅 */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* 左側：隊伍管理 */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
@@ -881,7 +911,8 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
                                 <div className="font-bold text-slate-700">{cat.name} <span className="text-slate-400 font-normal text-xs">({cat.words.length}題)</span></div>
                             </div>
                         </div>
-                        {(canAddWords || isHost) && (
+                        {/* ★★★ 修改：若有權限或為主持人，才顯示編輯按鈕 ★★★ */}
+                        {(isHost || (canAddWords && cat.enabled)) && (
                             <button onClick={() => openEditCategory(cat)} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-600" title="編輯題目">
                                 <Edit size={18}/>
                             </button>
@@ -889,8 +920,8 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
                     </div>
                 ))}
 
-                {/* 3. 新增與匯入 */}
-                {(canAddWords || isHost) && (
+                {/* 3. 新增與匯入 (僅主持人) */}
+                {isHost && (
                     <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
                         <div className="flex gap-2">
                             <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} className="border border-slate-200 p-2 rounded-xl flex-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="新增題庫分類..." />
