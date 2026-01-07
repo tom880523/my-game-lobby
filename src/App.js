@@ -225,7 +225,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.0 Full Control</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.2 Multi-Winner & Auto Color</footer>
     </div>
   );
 }
@@ -235,8 +235,8 @@ const DEFAULT_SETTINGS = {
   answerTime: 30, stealTime: 10, roundDuration: 600, totalRounds: 2, 
   pointsCorrect: 3, pointsSkip: -1, 
   teams: [
-    { id: 'team_a', name: 'A 隊', color: 'red' },
-    { id: 'team_b', name: 'B 隊', color: 'blue' }
+    { id: 'team_a', name: 'A 隊', color: '#ef4444' }, // Red-500
+    { id: 'team_b', name: 'B 隊', color: '#3b82f6' }  // Blue-500
   ],
   startTeamIndex: 0,
   permissions: {
@@ -574,11 +574,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
   };
 
   const openEditCategory = (cat) => {
-      // 權限判斷：非主持人，必須要「允許加題」且「該題庫已勾選啟用」
-      if (!isHost) {
-          if (!canAddWords) return alert("主持人未開放新增題目");
-          if (!cat.enabled) return alert("只能新增題目到目前已啟用的題庫中");
-      }
+      if (!isHost && !canAddWords) return alert("主持人未開放新增題目");
       setEditingCategory(cat);
   };
 
@@ -759,7 +755,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
                       <button onClick={() => setEditingCategory(null)}><X className="text-slate-400 hover:text-slate-600"/></button>
                   </div>
                   
-                  {/* 新增題目輸入 */}
+                  {/* 新增題目輸入 (所有人可見，若有權限) */}
                   <div className="flex gap-2">
                       <input value={newWordInput} onChange={e=>setNewWordInput(e.target.value)} className="flex-1 border p-2 rounded-lg text-sm" placeholder="輸入新題目..." onKeyDown={e => e.key === 'Enter' && addWordToCategory()}/>
                       <button onClick={addWordToCategory} className="bg-indigo-600 text-white px-3 rounded-lg"><Plus/></button>
@@ -802,6 +798,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
           </div>
       )}
 
+      {/* Grid 佈局內容 (隊伍、題庫) 與之前相同，略微省略以節省篇幅 */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* 左側：隊伍管理 */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
@@ -1321,7 +1318,10 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
 function ResultView({roomData, isHost, roomId}) {
    const teams = roomData.settings.teams;
    const sortedTeams = [...teams].sort((a, b) => (roomData.scores[b.id] || 0) - (roomData.scores[a.id] || 0));
-   const winner = sortedTeams[0];
+   
+   // ★★★ 多勝利者邏輯 ★★★
+   const maxScore = sortedTeams[0] ? (roomData.scores[sortedTeams[0].id] || 0) : 0;
+   const winners = sortedTeams.filter(t => (roomData.scores[t.id] || 0) === maxScore);
 
    return (
      <div className="flex-1 bg-slate-900 flex items-center justify-center text-white p-4 text-center">
@@ -1333,19 +1333,24 @@ function ResultView({roomData, isHost, roomId}) {
            </div>
            
            <div>
-               <h2 className="text-slate-400 font-bold uppercase tracking-widest mb-2">WINNER</h2>
-               <h1 className="text-6xl font-black bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-orange-300 to-yellow-300">
-                   {winner.name}
+               <h2 className="text-slate-400 font-bold uppercase tracking-widest mb-2">
+                   {winners.length > 1 ? "WINNERS" : "WINNER"}
+               </h2>
+               <h1 className="text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-orange-300 to-yellow-300 leading-tight">
+                   {winners.map(w => w.name).join(" & ")}
                </h1>
            </div>
 
            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {sortedTeams.map((t, idx) => (
-                  <div key={t.id} className={`p-6 rounded-2xl border ${idx===0 ? 'bg-yellow-900/40 border-yellow-500/50' : 'bg-slate-800 border-slate-700'}`}>
-                      <div className="font-bold mb-2 text-lg" style={{color: t.color || 'white'}}>{t.name}</div>
-                      <div className="text-4xl font-mono font-black text-white">{roomData.scores[t.id] || 0}</div>
-                  </div>
-              ))}
+              {sortedTeams.map((t, idx) => {
+                  const isWinner = winners.some(w => w.id === t.id);
+                  return (
+                      <div key={t.id} className={`p-6 rounded-2xl border transition-all ${isWinner ? 'bg-yellow-900/40 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)] scale-105' : 'bg-slate-800 border-slate-700 opacity-80'}`}>
+                          <div className="font-bold mb-2 text-lg" style={{color: t.color || 'white'}}>{t.name}</div>
+                          <div className="text-4xl font-mono font-black text-white">{roomData.scores[t.id] || 0}</div>
+                      </div>
+                  );
+              })}
            </div>
            
            {isHost && (
@@ -1359,11 +1364,17 @@ function ResultView({roomData, isHost, roomId}) {
 }
 
 function SettingsModal({ localSettings, setLocalSettings, setShowSettings, onSave }) {
+    // 預設隊伍顏色調色盤
+    const TEAM_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+
     const addTeam = () => {
         const newId = `team_${Date.now()}`;
+        // 自動分配顏色
+        const nextColor = TEAM_COLORS[localSettings.teams.length % TEAM_COLORS.length];
+        
         setLocalSettings({
             ...localSettings,
-            teams: [...localSettings.teams, { id: newId, name: `新隊伍`, color: '#fff' }]
+            teams: [...localSettings.teams, { id: newId, name: `新隊伍 ${localSettings.teams.length + 1}`, color: nextColor }]
         });
     };
 
@@ -1405,6 +1416,7 @@ function SettingsModal({ localSettings, setLocalSettings, setShowSettings, onSav
                       </div>
                       {localSettings.teams.map((t, idx) => (
                           <div key={t.id} className="flex gap-2 items-center">
+                              <div className="w-4 h-4 rounded-full flex-shrink-0" style={{backgroundColor: t.color || '#ccc'}}></div>
                               <input 
                                 value={t.name}
                                 onChange={e => {
