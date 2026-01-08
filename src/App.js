@@ -67,15 +67,36 @@ export default function App() {
 
   // --- 大廳介面 ---
   return (
+    <GameLobby 
+      onSelectGame={setCurrentApp} 
+      user={user} 
+      isAdmin={isAdmin} 
+      authLoading={authLoading}
+      handleLogin={handleLogin}
+      handleLogout={handleLogout}
+    />
+  );
+}
+
+// --- 獨立的大廳組件 ---
+function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, handleLogout }) {
+  
+  // ★★★ 修改：設定網頁標題 (Browser Tab) ★★★
+  useEffect(() => {
+    document.title = "遊戲大廳";
+  }, []);
+
+  return (
     <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center relative overflow-hidden">
       {/* 背景裝飾 */}
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
       <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
       
       <header className="w-full max-w-4xl flex justify-between items-center mb-12 z-10">
+         {/* ★★★ 修改：大廳主標題 ★★★ */}
          <h1 className="text-3xl font-bold flex items-center gap-3 bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
             <Gamepad2 className="text-indigo-400 w-8 h-8" />
-            線上派對遊戲中心
+            遊戲大廳
          </h1>
          <div>
              {authLoading ? (
@@ -99,7 +120,7 @@ export default function App() {
       <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-4xl z-10">
         {/* 比手畫腳卡片 */}
         <button 
-          onClick={() => setCurrentApp('charades')}
+          onClick={() => onSelectGame('charades')}
           disabled={authLoading}
           className={`group relative border rounded-2xl p-1 overflow-hidden transition-all duration-300 text-left shadow-xl ${authLoading ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700 hover:scale-105'}`}
         >
@@ -135,7 +156,7 @@ export default function App() {
       </main>
 
       <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">
-        v6.0 Modular Architecture
+        v7.0 Title Updated
       </footer>
     </div>
   );
