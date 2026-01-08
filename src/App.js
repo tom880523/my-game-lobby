@@ -88,15 +88,18 @@ function MainApp() {
   useEffect(() => {
     const syncTime = async () => {
       try {
+        const startTime = Date.now();
         const tempDocRef = await addDoc(collection(db, 'time_sync'), {
           timestamp: serverTimestamp()
         });
         
         const unsubscribe = onSnapshot(tempDocRef, (snap) => {
-          if (snap.exists() && snap.data().timestamp) {
+          if (snap.exists() && snap.data().timestamp && !snap.metadata.hasPendingWrites) {
+            const endTime = Date.now();
             const serverTime = snap.data().timestamp.toMillis();
-            const localTime = Date.now();
-            const offset = serverTime - localTime;
+            const rtt = endTime - startTime;
+            const latency = rtt / 2;
+            const offset = serverTime - (endTime - latency);
             setServerTimeOffset(offset);
             unsubscribe();
             deleteDoc(tempDocRef).catch(()=>{});
@@ -133,15 +136,13 @@ function MainApp() {
 function GameLobby({ onSelectGame }) {
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true); // 新增 loading 狀態
+  const [authLoading, setAuthLoading] = useState(true); 
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
         if (u) {
-            // 使用者已登入 (不論是匿名還是 Google)
             setUser(u);
             if (!u.isAnonymous) {
-                // 如果是 Google 登入，檢查是否為 Admin
                 try {
                     const adminDoc = await getDoc(doc(db, 'admins', u.uid));
                     setIsAdmin(adminDoc.exists());
@@ -151,11 +152,9 @@ function GameLobby({ onSelectGame }) {
             }
             setAuthLoading(false);
         } else {
-            // ★★★ 關鍵修復：如果沒有使用者，強制自動匿名登入 ★★★
-            console.log("No user detected, signing in anonymously...");
+            // 自動匿名登入
             try {
                 await signInAnonymously(auth);
-                // 登入成功後，onAuthStateChanged 會再次觸發，進入上方的 if (u) 區塊
             } catch (e) {
                 console.error("Anonymous sign-in failed", e);
                 setAuthLoading(false);
@@ -177,7 +176,6 @@ function GameLobby({ onSelectGame }) {
 
   const handleLogout = async () => {
       await signOut(auth);
-      // 登出後，useEffect 會偵測到 u 為 null，然後自動觸發 signInAnonymously
   };
 
   return (
@@ -211,7 +209,7 @@ function GameLobby({ onSelectGame }) {
       <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-4xl z-10">
         <button 
           onClick={() => onSelectGame('charades')}
-          disabled={authLoading || !user} // 確保登入完成才能按
+          disabled={authLoading || !user} 
           className={`group relative border rounded-2xl p-1 overflow-hidden transition-all duration-300 text-left shadow-xl ${authLoading || !user ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700 hover:scale-105'}`}
         >
           <div className="h-full rounded-xl p-6 flex flex-col justify-between min-h-[200px]">
@@ -244,7 +242,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.4 Anon Login Fix</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.5 Ghost Buster (Auto Kick)</footer>
     </div>
   );
 }
@@ -281,8 +279,6 @@ function CharadesGame({ onBack, getNow }) {
   const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
 
   useEffect(() => {
-    // 這裡我們假設進入遊戲前已經在 Lobby 登入完成了，
-    // 但為了保險起見，還是監聽一下，以防直接輸入網址進入的人
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (u) {
           setUser(u);
@@ -293,7 +289,6 @@ function CharadesGame({ onBack, getNow }) {
               } catch (e) { setIsAdmin(false); }
           }
       } else {
-          // 如果在這裡還沒登入，也嘗試匿名登入
           signInAnonymously(auth).catch(console.error);
       }
     });
@@ -328,11 +323,65 @@ function CharadesGame({ onBack, getNow }) {
     return () => unsubscribe();
   }, [user, roomId, view]);
 
+  // ★★★ 核心功能：檢查並離開舊房間 ★★★
+  const checkAndLeaveOldRoom = async (uid, newRoomId) => {
+    try {
+        const userRef = doc(db, 'users', uid);
+        const userSnap = await getDoc(userRef);
+        
+        if (userSnap.exists()) {
+            const oldRoomId = userSnap.data().currentRoomId;
+            // 如果有舊房間紀錄，且不是現在要加入的房間
+            if (oldRoomId && oldRoomId !== newRoomId) {
+                // console.log("Cleaning up old room:", oldRoomId);
+                const oldRoomRef = doc(db, 'rooms', `room_${oldRoomId}`);
+                
+                // 執行 Transaction 確保資料一致性
+                await runTransaction(db, async (transaction) => {
+                    const oldRoomDoc = await transaction.get(oldRoomRef);
+                    if (!oldRoomDoc.exists()) return;
+
+                    const data = oldRoomDoc.data();
+                    const newPlayers = data.players.filter(p => p.id !== uid);
+
+                    if (newPlayers.length === 0) {
+                        transaction.delete(oldRoomRef); // 沒人了，刪除房間
+                    } else {
+                        const updates = { players: newPlayers };
+                        // 如果是房主離開，移交權限
+                        if (data.hostId === uid) {
+                            updates.hostId = newPlayers[0].id;
+                        }
+                        transaction.update(oldRoomRef, updates);
+                    }
+                });
+            }
+        }
+        // 更新使用者目前所在的房間 ID
+        await setDoc(userRef, { currentRoomId: newRoomId }, { merge: true });
+        
+    } catch (e) {
+        console.error("Cleanup old room failed:", e);
+        // 不阻擋流程，繼續讓使用者加入新房間
+    }
+  };
+
+  // ★★★ 離開房間時，清除 User Record ★★★
+  const clearUserRoomRecord = async (uid) => {
+      try {
+          await updateDoc(doc(db, 'users', uid), { currentRoomId: null });
+      } catch (e) { console.error(e); }
+  };
+
   const createRoom = async () => {
     if (!playerName.trim()) return alert("請輸入名字");
     setLoading(true);
     try {
       const newRoomId = generateRoomId();
+      
+      // 1. 先清理舊房間
+      await checkAndLeaveOldRoom(user.uid, newRoomId);
+
       const me = { id: user.uid, name: playerName, team: null, isHost: true };
       
       let savedDecks = [];
@@ -368,6 +417,10 @@ function CharadesGame({ onBack, getNow }) {
     setLoading(true);
     try {
       const rId = roomId.toUpperCase();
+      
+      // 1. 先清理舊房間
+      await checkAndLeaveOldRoom(user.uid, rId);
+
       const roomRef = doc(db, 'rooms', `room_${rId}`);
 
       await runTransaction(db, async (transaction) => {
@@ -403,6 +456,10 @@ function CharadesGame({ onBack, getNow }) {
     try {
       const ref = doc(db, 'rooms', `room_${roomId}`);
       const newPlayers = roomData.players.filter(p => p.id !== user.uid);
+      
+      // 清除使用者追蹤紀錄
+      await clearUserRoomRecord(user.uid);
+
       if (newPlayers.length === 0) {
          await deleteDoc(ref);
       } else {
@@ -599,6 +656,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
 
   const openEditCategory = (cat) => {
       if (!isHost && !canAddWords) return alert("主持人未開放新增題目");
+      if (!isHost && !cat.enabled) return alert("只能新增題目到目前已啟用的題庫中");
       setEditingCategory(cat);
   };
 
@@ -932,7 +990,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
                                 <div className="font-bold text-slate-700">{cat.name} <span className="text-slate-400 font-normal text-xs">({cat.words.length}題)</span></div>
                             </div>
                         </div>
-                        {/* ★★★ 修改：若有權限(僅限主持人勾選的題庫)或為主持人，才顯示編輯按鈕 ★★★ */}
+                        {/* ★★★ 修改：若有權限或為主持人，才顯示編輯按鈕 ★★★ */}
                         {(isHost || (canAddWords && cat.enabled)) && (
                             <button onClick={() => openEditCategory(cat)} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-600" title="編輯題目">
                                 <Edit size={18}/>
