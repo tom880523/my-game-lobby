@@ -84,20 +84,33 @@ function MainApp() {
   const [currentApp, setCurrentApp] = useState('home');
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
 
-  // 初始化時計算時間差 (Time Sync)
+  // ★★★ 優化後的計時同步 (加入 RTT 延遲補償) ★★★
   useEffect(() => {
     const syncTime = async () => {
       try {
+        const startTime = Date.now(); // 記錄請求開始時間
         const tempDocRef = await addDoc(collection(db, 'time_sync'), {
           timestamp: serverTimestamp()
         });
         
         const unsubscribe = onSnapshot(tempDocRef, (snap) => {
-          if (snap.exists() && snap.data().timestamp) {
+          // 確保讀取到的是伺服器端寫入的數據 (hasPendingWrites === false)
+          if (snap.exists() && snap.data().timestamp && !snap.metadata.hasPendingWrites) {
+            const endTime = Date.now();
             const serverTime = snap.data().timestamp.toMillis();
-            const localTime = Date.now();
-            const offset = serverTime - localTime;
+            
+            // 計算來回傳輸時間 (RTT)
+            const rtt = endTime - startTime;
+            // 估算單趟延遲 (Latency)
+            const latency = rtt / 2;
+            
+            // 校正公式：伺服器時間 - (本地接收時間 - 延遲)
+            // 這樣可以還原出「發送當下」的伺服器對應時間
+            const offset = serverTime - (endTime - latency);
+            
+            // console.log(`Time Sync: RTT=${rtt}ms, Latency=${latency}ms, Offset=${offset}ms`);
             setServerTimeOffset(offset);
+            
             unsubscribe();
             deleteDoc(tempDocRef).catch(()=>{});
           }
@@ -225,7 +238,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.2 Multi-Winner & Auto Color</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.3 Enhanced Sync</footer>
     </div>
   );
 }
@@ -575,6 +588,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
 
   const openEditCategory = (cat) => {
       if (!isHost && !canAddWords) return alert("主持人未開放新增題目");
+      if (!isHost && !cat.enabled) return alert("只能新增題目到目前已啟用的題庫中");
       setEditingCategory(cat);
   };
 
@@ -615,11 +629,9 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
 
   const saveDeckToCloud = async () => {
       if (!editingCategory) return;
-      // ★★★ 權限檢查：只有名單內的管理員可上傳 ★★★
       if (!isAdmin) return alert("權限不足：您必須是管理員才能上傳題庫到雲端！");
       
       try {
-          // 檢查是否有同名題庫 (覆蓋邏輯)
           const q = query(collection(db, 'public_decks'), where("name", "==", editingCategory.name));
           const snapshot = await getDocs(q);
           
@@ -632,7 +644,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
               await updateDoc(doc(db, 'public_decks', existingDoc.id), {
                   words: editingCategory.words,
                   updatedAt: serverTimestamp(),
-                  creatorId: currentUser.uid // 更新擁有者
+                  creatorId: currentUser.uid 
               });
               docRef = existingDoc;
               alert(`題庫「${editingCategory.name}」已更新！代碼：\n${docRef.id}`);
@@ -798,7 +810,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
           </div>
       )}
 
-      {/* Grid 佈局內容 (隊伍、題庫) 與之前相同，略微省略以節省篇幅 */}
+      {/* Grid 佈局內容 (隊伍、題庫) */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* 左側：隊伍管理 */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
