@@ -84,33 +84,20 @@ function MainApp() {
   const [currentApp, setCurrentApp] = useState('home');
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
 
-  // ★★★ 優化後的計時同步 (加入 RTT 延遲補償) ★★★
+  // 初始化時計算時間差 (Time Sync)
   useEffect(() => {
     const syncTime = async () => {
       try {
-        const startTime = Date.now(); // 記錄請求開始時間
         const tempDocRef = await addDoc(collection(db, 'time_sync'), {
           timestamp: serverTimestamp()
         });
         
         const unsubscribe = onSnapshot(tempDocRef, (snap) => {
-          // 確保讀取到的是伺服器端寫入的數據 (hasPendingWrites === false)
-          if (snap.exists() && snap.data().timestamp && !snap.metadata.hasPendingWrites) {
-            const endTime = Date.now();
+          if (snap.exists() && snap.data().timestamp) {
             const serverTime = snap.data().timestamp.toMillis();
-            
-            // 計算來回傳輸時間 (RTT)
-            const rtt = endTime - startTime;
-            // 估算單趟延遲 (Latency)
-            const latency = rtt / 2;
-            
-            // 校正公式：伺服器時間 - (本地接收時間 - 延遲)
-            // 這樣可以還原出「發送當下」的伺服器對應時間
-            const offset = serverTime - (endTime - latency);
-            
-            // console.log(`Time Sync: RTT=${rtt}ms, Latency=${latency}ms, Offset=${offset}ms`);
+            const localTime = Date.now();
+            const offset = serverTime - localTime;
             setServerTimeOffset(offset);
-            
             unsubscribe();
             deleteDoc(tempDocRef).catch(()=>{});
           }
@@ -146,17 +133,33 @@ function MainApp() {
 function GameLobby({ onSelectGame }) {
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true); // 新增 loading 狀態
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
-        setUser(u);
-        if (u && !u.isAnonymous) {
-            try {
-                const adminDoc = await getDoc(doc(db, 'admins', u.uid));
-                setIsAdmin(adminDoc.exists());
-            } catch (e) { setIsAdmin(false); }
+        if (u) {
+            // 使用者已登入 (不論是匿名還是 Google)
+            setUser(u);
+            if (!u.isAnonymous) {
+                // 如果是 Google 登入，檢查是否為 Admin
+                try {
+                    const adminDoc = await getDoc(doc(db, 'admins', u.uid));
+                    setIsAdmin(adminDoc.exists());
+                } catch (e) { setIsAdmin(false); }
+            } else {
+                setIsAdmin(false);
+            }
+            setAuthLoading(false);
         } else {
-            setIsAdmin(false);
+            // ★★★ 關鍵修復：如果沒有使用者，強制自動匿名登入 ★★★
+            console.log("No user detected, signing in anonymously...");
+            try {
+                await signInAnonymously(auth);
+                // 登入成功後，onAuthStateChanged 會再次觸發，進入上方的 if (u) 區塊
+            } catch (e) {
+                console.error("Anonymous sign-in failed", e);
+                setAuthLoading(false);
+            }
         }
     });
     return () => unsubscribe();
@@ -174,7 +177,7 @@ function GameLobby({ onSelectGame }) {
 
   const handleLogout = async () => {
       await signOut(auth);
-      await signInAnonymously(auth);
+      // 登出後，useEffect 會偵測到 u 為 null，然後自動觸發 signInAnonymously
   };
 
   return (
@@ -188,7 +191,9 @@ function GameLobby({ onSelectGame }) {
             線上派對遊戲中心
          </h1>
          <div>
-             {user && !user.isAnonymous ? (
+             {authLoading ? (
+                 <span className="text-slate-400 text-sm">連線中...</span>
+             ) : (user && !user.isAnonymous) ? (
                  <div className="flex items-center gap-2">
                      {isAdmin && <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded font-bold shadow-glow">Admin</span>}
                      <button onClick={handleLogout} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-full text-sm transition border border-slate-700">
@@ -206,7 +211,8 @@ function GameLobby({ onSelectGame }) {
       <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-4xl z-10">
         <button 
           onClick={() => onSelectGame('charades')}
-          className="group relative bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700 rounded-2xl p-1 overflow-hidden hover:scale-105 transition-all duration-300 text-left shadow-xl"
+          disabled={authLoading || !user} // 確保登入完成才能按
+          className={`group relative border rounded-2xl p-1 overflow-hidden transition-all duration-300 text-left shadow-xl ${authLoading || !user ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700 hover:scale-105'}`}
         >
           <div className="h-full rounded-xl p-6 flex flex-col justify-between min-h-[200px]">
              <div>
@@ -217,7 +223,7 @@ function GameLobby({ onSelectGame }) {
                <p className="text-slate-400 text-sm">經典派對遊戲！內建豐富題庫、支援搶答、自訂多重隊伍與即時計分。</p>
              </div>
              <div className="flex items-center gap-2 text-indigo-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
-                進入遊戲 <ArrowLeft className="rotate-180" size={16}/>
+                {authLoading ? "連線中..." : "進入遊戲"} <ArrowLeft className="rotate-180" size={16}/>
              </div>
           </div>
         </button>
@@ -238,7 +244,7 @@ function GameLobby({ onSelectGame }) {
           </div>
         ))}
       </main>
-      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.3 Enhanced Sync</footer>
+      <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">v5.4 Anon Login Fix</footer>
     </div>
   );
 }
@@ -275,15 +281,20 @@ function CharadesGame({ onBack, getNow }) {
   const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
 
   useEffect(() => {
+    // 這裡我們假設進入遊戲前已經在 Lobby 登入完成了，
+    // 但為了保險起見，還是監聽一下，以防直接輸入網址進入的人
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u && !u.isAnonymous) {
-          try {
-              const adminDoc = await getDoc(doc(db, 'admins', u.uid));
-              setIsAdmin(adminDoc.exists());
-          } catch (e) { setIsAdmin(false); }
+      if (u) {
+          setUser(u);
+          if (!u.isAnonymous) {
+              try {
+                  const adminDoc = await getDoc(doc(db, 'admins', u.uid));
+                  setIsAdmin(adminDoc.exists());
+              } catch (e) { setIsAdmin(false); }
+          }
       } else {
-          setIsAdmin(false);
+          // 如果在這裡還沒登入，也嘗試匿名登入
+          signInAnonymously(auth).catch(console.error);
       }
     });
     return () => unsubscribe();
@@ -588,7 +599,6 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
 
   const openEditCategory = (cat) => {
       if (!isHost && !canAddWords) return alert("主持人未開放新增題目");
-      if (!isHost && !cat.enabled) return alert("只能新增題目到目前已啟用的題庫中");
       setEditingCategory(cat);
   };
 
@@ -629,9 +639,11 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
 
   const saveDeckToCloud = async () => {
       if (!editingCategory) return;
+      // ★★★ 權限檢查：只有名單內的管理員可上傳 ★★★
       if (!isAdmin) return alert("權限不足：您必須是管理員才能上傳題庫到雲端！");
       
       try {
+          // 檢查是否有同名題庫 (覆蓋邏輯)
           const q = query(collection(db, 'public_decks'), where("name", "==", editingCategory.name));
           const snapshot = await getDocs(q);
           
@@ -644,7 +656,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
               await updateDoc(doc(db, 'public_decks', existingDoc.id), {
                   words: editingCategory.words,
                   updatedAt: serverTimestamp(),
-                  creatorId: currentUser.uid 
+                  creatorId: currentUser.uid // 更新擁有者
               });
               docRef = existingDoc;
               alert(`題庫「${editingCategory.name}」已更新！代碼：\n${docRef.id}`);
@@ -810,7 +822,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
           </div>
       )}
 
-      {/* Grid 佈局內容 (隊伍、題庫) */}
+      {/* Grid 佈局內容 (隊伍、題庫) 與之前相同，略微省略以節省篇幅 */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* 左側：隊伍管理 */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
@@ -920,7 +932,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
                                 <div className="font-bold text-slate-700">{cat.name} <span className="text-slate-400 font-normal text-xs">({cat.words.length}題)</span></div>
                             </div>
                         </div>
-                        {/* ★★★ 修改：若有權限或為主持人，才顯示編輯按鈕 ★★★ */}
+                        {/* ★★★ 修改：若有權限(僅限主持人勾選的題庫)或為主持人，才顯示編輯按鈕 ★★★ */}
                         {(isHost || (canAddWords && cat.enabled)) && (
                             <button onClick={() => openEditCategory(cat)} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-600" title="編輯題目">
                                 <Edit size={18}/>
@@ -1330,8 +1342,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
 function ResultView({roomData, isHost, roomId}) {
    const teams = roomData.settings.teams;
    const sortedTeams = [...teams].sort((a, b) => (roomData.scores[b.id] || 0) - (roomData.scores[a.id] || 0));
-   
-   // ★★★ 多勝利者邏輯 ★★★
    const maxScore = sortedTeams[0] ? (roomData.scores[sortedTeams[0].id] || 0) : 0;
    const winners = sortedTeams.filter(t => (roomData.scores[t.id] || 0) === maxScore);
 
@@ -1376,14 +1386,10 @@ function ResultView({roomData, isHost, roomId}) {
 }
 
 function SettingsModal({ localSettings, setLocalSettings, setShowSettings, onSave }) {
-    // 預設隊伍顏色調色盤
     const TEAM_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
-
     const addTeam = () => {
         const newId = `team_${Date.now()}`;
-        // 自動分配顏色
         const nextColor = TEAM_COLORS[localSettings.teams.length % TEAM_COLORS.length];
-        
         setLocalSettings({
             ...localSettings,
             teams: [...localSettings.teams, { id: newId, name: `新隊伍 ${localSettings.teams.length + 1}`, color: nextColor }]
