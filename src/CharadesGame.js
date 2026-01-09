@@ -35,8 +35,9 @@ const DEFAULT_SETTINGS = {
 const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 const generateId = () => Math.random().toString(36).substring(2, 10);
 
-export default function CharadesGame({ onBack, getNow }) {
-  const [user, setUser] = useState(null);
+// ★★★ 接收 currentUser (從 App.js 傳入) 以確保身分一致 ★★★
+export default function CharadesGame({ onBack, getNow, currentUser }) {
+  const [user, setUser] = useState(currentUser || null);
   
   const [view, setView] = useState('lobby');
   const [roomId, setRoomId] = useState('');
@@ -47,11 +48,18 @@ export default function CharadesGame({ onBack, getNow }) {
   const [showSettings, setShowSettings] = useState(false);
   const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
 
+  // ★★★ 安全的時間獲取函式 (如果 getNow 沒傳進來，自動降級使用 Date.now) ★★★
+  const getCurrentTime = () => {
+    if (typeof getNow === 'function') return getNow();
+    return Date.now();
+  };
+
   // 遊戲標題設定
   useEffect(() => {
     document.title = "比手畫腳大亂鬥 | Party Game";
   }, []);
 
+  // 雙重保險：監聽登入狀態
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (u) {
@@ -273,7 +281,7 @@ export default function CharadesGame({ onBack, getNow }) {
                gameState: 'idle', currentWord: null, roundEndTime: null, turnEndTime: null
              });
           }} />}
-          {view === 'game' && <GameInterface roomData={roomData} isHost={isHost} roomId={roomId} previewAsPlayer={previewAsPlayer} setPreviewAsPlayer={setPreviewAsPlayer} getNow={getNow} />}
+          {view === 'game' && <GameInterface roomData={roomData} isHost={isHost} roomId={roomId} previewAsPlayer={previewAsPlayer} setPreviewAsPlayer={setPreviewAsPlayer} getNow={getCurrentTime} />}
           {view === 'result' && <ResultView roomData={roomData} isHost={isHost} roomId={roomId} />}
        </main>
 
@@ -285,7 +293,6 @@ export default function CharadesGame({ onBack, getNow }) {
 // --- Components ---
 
 function LobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, createRoom, joinRoom, loading, user }) {
-  // ... (保持原樣，不需要變更)
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
       <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8 max-w-md w-full space-y-6 relative text-white">
@@ -298,6 +305,8 @@ function LobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, creat
           <div>
             <label className="text-xs text-white/70 ml-1">你的名字</label>
             <input value={playerName} onChange={e => setPlayerName(e.target.value)} className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none placeholder-white/30 text-white" placeholder="例如：比手畫腳之神" />
+            {/* ★★★ 顯示 ID，方便除錯 ★★★ */}
+            {user && <div className="text-[10px] text-white/40 mt-1 text-right font-mono">ID: {user.uid.slice(0, 5)}...</div>}
           </div>
           <button onClick={createRoom} disabled={loading || !user} className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl font-bold shadow-lg transform transition active:scale-95">建立新房間</button>
           <div className="relative py-2"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div><div className="relative flex justify-center text-xs uppercase"><span className="bg-transparent px-2 text-white/40">或是加入房間</span></div></div>
@@ -311,7 +320,6 @@ function LobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, creat
   );
 }
 
-// ... RoomView 與 SettingsModal 與之前相同，略過以節省空間 (請保持原樣)
 function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
   const [editingCategory, setEditingCategory] = useState(null); 
   const [newCatName, setNewCatName] = useState("");
@@ -407,6 +415,7 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
 
   const openEditCategory = (cat) => {
       if (!isHost && !canAddWords) return alert("主持人未開放新增題目");
+      if (!isHost && !cat.enabled) return alert("只能新增題目到目前已啟用的題庫中");
       setEditingCategory(cat);
   };
 
@@ -445,8 +454,88 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
       setEditingCategory(null);
   };
 
-  // ... (省略 Cloud 相關，保持原樣) ...
-  // 請保留 saveDeckToCloud, importDeckFromCloud, handleCSVUpload 等函式
+  const saveDeckToCloud = async () => {
+      if (!editingCategory) return;
+      // ★★★ 權限檢查：只有名單內的管理員可上傳 ★★★
+      if (!isAdmin) return alert("權限不足：您必須是管理員才能上傳題庫到雲端！");
+      
+      try {
+          // 檢查是否有同名題庫 (覆蓋邏輯)
+          const q = query(collection(db, 'public_decks'), where("name", "==", editingCategory.name));
+          const snapshot = await getDocs(q);
+          
+          let docRef;
+          if (!snapshot.empty) {
+              const confirmOverwrite = window.confirm(`雲端已存在同名題庫「${editingCategory.name}」，確定要覆蓋嗎？`);
+              if (!confirmOverwrite) return;
+              
+              const existingDoc = snapshot.docs[0];
+              await updateDoc(doc(db, 'public_decks', existingDoc.id), {
+                  words: editingCategory.words,
+                  updatedAt: serverTimestamp(),
+                  creatorId: currentUser.uid // 更新擁有者
+              });
+              docRef = existingDoc;
+              alert(`題庫「${editingCategory.name}」已更新！代碼：\n${docRef.id}`);
+          } else {
+              docRef = await addDoc(collection(db, 'public_decks'), {
+                  name: editingCategory.name,
+                  words: editingCategory.words,
+                  createdAt: serverTimestamp(),
+                  creatorId: currentUser.uid,
+                  creatorEmail: currentUser.email 
+              });
+              alert(`題庫已上傳！代碼：\n${docRef.id}`);
+          }
+      } catch (e) {
+          alert("上傳失敗：" + e.message);
+      }
+  };
+
+  const importDeckFromCloud = async (code = null) => {
+      const targetCode = code || importCode;
+      if (!targetCode.trim()) return;
+      try {
+          const deckDoc = await getDoc(doc(db, 'public_decks', targetCode.trim()));
+          if (deckDoc.exists()) {
+              const deck = deckDoc.data();
+              const newCat = { id: generateId(), name: deck.name, words: deck.words || [], enabled: true };
+              await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: [...customCategories, newCat] });
+              alert(`成功匯入：${deck.name} (${deck.words?.length} 題)`);
+              setImportCode("");
+              setShowCloudLibrary(false);
+          } else {
+              alert("找不到此代碼的題庫");
+          }
+      } catch (e) {
+          alert("匯入失敗：" + e.message);
+      }
+  };
+
+  const handleCSVUpload = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+          const text = evt.target.result;
+          const words = text.split(/[,\n\r]+/).map(w => w.trim()).filter(w => w.length > 0);
+          if (words.length === 0) return alert("檔案內沒有內容");
+          
+          if (!editingCategory) return;
+          const updatedCats = customCategories.map(c => {
+              if (c.id === editingCategory.id) {
+                  const uniqueWords = [...new Set([...c.words, ...words])];
+                  return { ...c, words: uniqueWords };
+              }
+              return c;
+          });
+          await updateDoc(doc(db, 'rooms', `room_${roomId}`), { customCategories: updatedCats });
+          const newCat = updatedCats.find(c => c.id === editingCategory.id);
+          setEditingCategory(newCat);
+          alert(`已匯入 ${words.length} 個題目`);
+      };
+      reader.readAsText(file);
+  };
 
   const PlayerItem = ({ p, showKick, showPromote }) => {
       const [showMoveMenu, setShowMoveMenu] = useState(false);
@@ -483,26 +572,310 @@ function RoomView({roomData, isHost, roomId, onStart, currentUser, isAdmin}) {
 
   return (
     <div className="p-4 md:p-8 w-full space-y-6">
-      {/* 題庫編輯 Modal (省略內容，保持原樣) */}
-      
-      {/* ... Grid Layout for Room ... */}
-      
-      {/* (請把您原本的 RoomView JSX 完整貼回這裡，因為沒有變動) */}
+      {/* 雲端圖書館 Modal */}
+      {showCloudLibrary && (
+          <CloudLibraryModal 
+            onClose={() => setShowCloudLibrary(false)} 
+            onImport={importDeckFromCloud} 
+            db={db}
+            currentUser={currentUser}
+            isAdmin={isAdmin}
+          />
+      )}
+
+      {/* 題庫編輯 Modal */}
+      {editingCategory && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col animate-in zoom-in duration-200">
+                  <div className="flex justify-between items-center border-b pb-2">
+                      <h3 className="font-bold text-lg flex items-center gap-2">
+                          <Edit size={18} className="text-indigo-500"/>
+                          {editingCategory.name} 
+                          <span className="text-xs text-slate-400 font-normal">({editingCategory.words.length}題)</span>
+                      </h3>
+                      <button onClick={() => setEditingCategory(null)}><X className="text-slate-400 hover:text-slate-600"/></button>
+                  </div>
+                  
+                  {/* 新增題目輸入 (所有人可見，若有權限) */}
+                  <div className="flex gap-2">
+                      <input value={newWordInput} onChange={e=>setNewWordInput(e.target.value)} className="flex-1 border p-2 rounded-lg text-sm" placeholder="輸入新題目..." onKeyDown={e => e.key === 'Enter' && addWordToCategory()}/>
+                      <button onClick={addWordToCategory} className="bg-indigo-600 text-white px-3 rounded-lg"><Plus/></button>
+                  </div>
+                  
+                  {/* ★★★ 工具列 (僅主持人可見) ★★★ */}
+                  {isHost && (
+                    <div className="flex gap-2 text-xs overflow-x-auto pb-2">
+                        <label className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg cursor-pointer whitespace-nowrap">
+                            <FileText size={14}/> 匯入 CSV
+                            <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVUpload}/>
+                        </label>
+                        {/* ★★★ 只有管理員看得到上傳按鈕 ★★★ */}
+                        {isAdmin && (
+                            <button onClick={saveDeckToCloud} className="flex items-center gap-1 bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-2 rounded-lg whitespace-nowrap">
+                                <Cloud size={14}/> 上傳雲端 (管理員)
+                            </button>
+                        )}
+                    </div>
+                  )}
+
+                  <div className="flex-1 overflow-y-auto border rounded-lg p-2 bg-slate-50 space-y-1">
+                      {editingCategory.words.map((w, i) => (
+                          <div key={i} className="flex justify-between items-center bg-white p-2 rounded shadow-sm group">
+                              <span>{w}</span>
+                              {/* ★★★ 僅主持人可刪除單字 ★★★ */}
+                              {isHost && (
+                                <button onClick={() => removeWordFromCategory(w)} className="text-slate-300 hover:text-red-500"><X size={14}/></button>
+                              )}
+                          </div>
+                      ))}
+                      {editingCategory.words.length === 0 && <div className="text-center text-slate-400 py-4">還沒有題目，快新增吧！</div>}
+                  </div>
+                  <div className="pt-2 border-t flex justify-between">
+                      {/* ★★★ 僅主持人可刪除分類 ★★★ */}
+                      {isHost ? <button onClick={deleteCategory} className="text-red-500 text-sm flex items-center gap-1"><Trash2 size={14}/> 刪除</button> : <div></div>}
+                      <button onClick={() => setEditingCategory(null)} className="bg-slate-800 text-white px-6 py-2 rounded-lg text-sm font-bold">完成</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Grid 佈局內容 (隊伍、題庫) 與之前相同，略微省略以節省篇幅 */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* 左側：隊伍管理 */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-             {/* ... */}
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-indigo-500"/> 參賽玩家 ({participants.length})</h2>
+                {isHost && <button onClick={randomize} className="text-sm bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full hover:bg-indigo-100 font-bold transition flex items-center gap-1"><Shuffle size={14}/> 隨機分組</button>}
+            </div>
+            
+            <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                <h4 className="text-xs font-bold text-yellow-600 uppercase tracking-wider mb-2">目前主持人</h4>
+                {hostPlayer ? <PlayerItem p={hostPlayer} showKick={false} showPromote={false} /> : <div className="text-gray-400 text-sm">無主持人</div>}
+            </div>
+
+            {/* 未分組區 */}
+            <div 
+                className={`bg-slate-50 p-3 rounded-xl border border-dashed transition-all ${unassigned.length>0 ? 'border-orange-300 bg-orange-50' : 'border-slate-200'}`}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, null)}
+            >
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">等待分組 ({unassigned.length})</h4>
+                    {isHost && <span className="text-[10px] text-slate-400">可拖曳玩家換隊</span>}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                    {unassigned.map(p => <PlayerItem key={p.id} p={p} showKick={isHost && p.id !== currentUser.uid} showPromote={isHost} />)}
+                </div>
+            </div>
+
+            {/* 隊伍列表 */}
+            <div className="grid grid-cols-1 gap-4">
+                {teams.map((team) => {
+                    const teamPlayers = participants.filter(p => p.team === team.id);
+                    
+                    return (
+                        <div 
+                            key={team.id} 
+                            className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 transition-colors"
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, team.id)}
+                        >
+                            <div className="flex justify-between items-center mb-3">
+                                {isHost && editingTeamName?.id === team.id ? (
+                                    <input 
+                                        autoFocus
+                                        className="font-bold text-lg border-b border-indigo-500 outline-none bg-transparent w-full"
+                                        value={editingTeamName.name}
+                                        onChange={e => setEditingTeamName({...editingTeamName, name: e.target.value})}
+                                        onBlur={() => updateTeamName(team.id, editingTeamName.name)}
+                                        onKeyDown={e => e.key === 'Enter' && updateTeamName(team.id, editingTeamName.name)}
+                                    />
+                                ) : (
+                                    <h3 
+                                        className={`font-bold text-lg flex items-center gap-2 ${isHost ? 'cursor-pointer hover:text-indigo-600' : ''}`}
+                                        onClick={() => isHost && setEditingTeamName(team)}
+                                        title={isHost ? "點擊修改隊名" : ""}
+                                    >
+                                        <div className="w-3 h-3 rounded-full" style={{backgroundColor: team.color || 'gray'}}></div> 
+                                        {team.name}
+                                    </h3>
+                                )}
+                            </div>
+                            <div className="space-y-1 min-h-[40px]">
+                                {teamPlayers.map(p => <PlayerItem key={p.id} p={p} showKick={isHost && p.id !== currentUser.uid} showPromote={isHost} />)}
+                                {teamPlayers.length === 0 && <span className="text-slate-300 text-sm italic p-1 block border border-dashed rounded text-center">拖曳玩家至此</span>}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
-        {/* 右側：題庫 */}
+
+        {/* 右側：題庫與設定 */}
         <div className="space-y-6">
-             {/* ... */}
+             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h2 className="text-lg font-bold mb-4 text-slate-800 flex justify-between items-center">
+                    題庫設定
+                    {!isHost && <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded">僅主持人可選</span>}
+                </h2>
+                
+                {/* 1. 內建題庫 Toggle */}
+                <div 
+                    onClick={toggleDefault}
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all mb-3 ${isHost ? 'cursor-pointer' : 'opacity-70'} ${roomData.useDefaultCategory !== false ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white'}`}
+                >
+                    <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${roomData.useDefaultCategory !== false ? 'bg-indigo-500 border-indigo-500' : 'border-slate-400'}`}>
+                            {roomData.useDefaultCategory !== false && <Check size={14} className="text-white"/>}
+                        </div>
+                        <div>
+                            <div className="font-bold text-slate-700">內建題庫 (1000+)</div>
+                            <div className="text-xs text-slate-500">食物、地標、動物、日常...</div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. 自訂題庫列表 */}
+                {customCategories.map(cat => (
+                    <div key={cat.id} className="flex items-center gap-2 mb-2">
+                        <div 
+                            onClick={() => toggleCategory(cat.id)}
+                            className={`flex-1 flex items-center justify-between p-3 rounded-xl border transition-all ${isHost ? 'cursor-pointer' : 'opacity-70'} ${cat.enabled ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white'}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={`w-5 h-5 rounded border flex items-center justify-center ${cat.enabled ? 'bg-indigo-500 border-indigo-500' : 'border-slate-400'}`}>
+                                    {cat.enabled && <Check size={14} className="text-white"/>}
+                                </div>
+                                <div className="font-bold text-slate-700">{cat.name} <span className="text-slate-400 font-normal text-xs">({cat.words.length}題)</span></div>
+                            </div>
+                        </div>
+                        {/* ★★★ 修改：若有權限或為主持人，才顯示編輯按鈕 ★★★ */}
+                        {(isHost || (canAddWords && cat.enabled)) && (
+                            <button onClick={() => openEditCategory(cat)} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-600" title="編輯題目">
+                                <Edit size={18}/>
+                            </button>
+                        )}
+                    </div>
+                ))}
+
+                {/* 3. 新增與匯入 (僅主持人) */}
+                {isHost && (
+                    <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
+                        <div className="flex gap-2">
+                            <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} className="border border-slate-200 p-2 rounded-xl flex-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="新增題庫分類..." />
+                            <button onClick={addCategory} className="bg-slate-800 hover:bg-slate-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Plus size={16}/> 新增</button>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                            <input value={importCode} onChange={e=>setImportCode(e.target.value)} className="border border-slate-200 p-2 rounded-xl flex-1 focus:ring-2 focus:ring-sky-500 outline-none text-sm" placeholder="輸入雲端題庫代碼..." />
+                            <button onClick={() => importDeckFromCloud()} className="bg-sky-600 hover:bg-sky-700 text-white px-3 rounded-xl text-sm font-bold flex items-center gap-1"><Download size={16}/> 下載</button>
+                        </div>
+
+                        <button onClick={() => setShowCloudLibrary(true)} className="w-full mt-2 bg-gradient-to-r from-sky-500 to-indigo-500 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition">
+                            <Library size={18}/> 瀏覽雲端題庫圖書館
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {isHost ? (
+                <button onClick={onStart} className="w-full py-5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white text-xl font-bold rounded-2xl shadow-lg shadow-green-200 transform hover:scale-[1.02] transition-all flex justify-center items-center gap-2"><Play className="fill-white" /> 開始遊戲</button>
+            ) : <div className="text-center p-8 bg-slate-50 border border-slate-200 rounded-2xl"><div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-4"></div><h3 className="font-bold text-slate-700 text-lg">等待主持人開始...</h3></div>}
         </div>
       </div>
     </div>
   );
 }
 
-// ★★★ 核心遊戲介面 (修正重點) ★★★
+// ★★★ 雲端題庫圖書館 (New) ★★★
+function CloudLibraryModal({ onClose, onImport, db, currentUser, isAdmin }) {
+    const [decks, setDecks] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchDecks = async () => {
+            try {
+                // 讀取所有公開題庫 (實際應用可能需要分頁)
+                const q = query(collection(db, 'public_decks'), orderBy('createdAt', 'desc'), limit(20));
+                const snapshot = await getDocs(q);
+                const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setDecks(list);
+            } catch (e) {
+                console.error("Fetch decks error:", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDecks();
+    }, [db]);
+
+    const deleteDeck = async (deckId) => {
+        // ★★★ 權限檢查：只有管理員能刪除 ★★★
+        if (!isAdmin) return alert("權限不足：只有指定管理員可以刪除雲端題庫！");
+        if (!window.confirm("確定要從雲端永久刪除此題庫嗎？")) return;
+        try {
+            await deleteDoc(doc(db, 'public_decks', deckId));
+            setDecks(decks.filter(d => d.id !== deckId));
+        } catch (e) {
+            alert("刪除失敗");
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-2xl rounded-2xl p-6 shadow-2xl flex flex-col max-h-[80vh] animate-in zoom-in duration-200">
+                <div className="flex justify-between items-center border-b pb-4 mb-4">
+                    <h3 className="font-bold text-2xl flex items-center gap-2 text-slate-800">
+                        <Cloud className="text-sky-500"/> 雲端題庫圖書館
+                    </h3>
+                    <button onClick={onClose}><X className="text-slate-400 hover:text-slate-600"/></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                    {loading ? (
+                        <div className="text-center py-10 text-slate-400">載入中...</div>
+                    ) : decks.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400">目前沒有公開題庫</div>
+                    ) : (
+                        decks.map(deck => (
+                            <div key={deck.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center hover:shadow-md transition">
+                                <div>
+                                    <h4 className="font-bold text-lg text-slate-800">{deck.name}</h4>
+                                    <div className="text-sm text-slate-500 flex gap-3">
+                                        <span>題目數: {deck.words?.length || 0}</span>
+                                        <span className="font-mono bg-slate-200 px-1 rounded text-xs">ID: {deck.id}</span>
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-1">上傳者: {deck.creatorEmail || "未知"}</div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => onImport(deck.id)}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1"
+                                    >
+                                        <Download size={16}/> 下載
+                                    </button>
+                                    
+                                    {/* ★★★ 只有管理員看得到刪除按鈕 ★★★ */}
+                                    {isAdmin && (
+                                        <button 
+                                            onClick={() => deleteDeck(deck.id)}
+                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                            title="刪除 (管理員專用)"
+                                        >
+                                            <Trash2 size={18}/>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ★★★ 核心遊戲介面 ★★★
 function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsPlayer, getNow}) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [roundTimeLeft, setRoundTimeLeft] = useState(0);
@@ -513,11 +886,11 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const currentTeam = roomData.settings.teams.find(t => t.id === roomData.currentTeamId) || roomData.settings.teams[0];
   const teams = roomData.settings.teams;
 
-  // ★★★ 修復 1: 通知不同步問題 ★★★
+  // ★★★ 修正通知時間判定 ★★★
   useEffect(() => {
     if (roomData.lastEvent && roomData.lastEvent.timestamp !== lastEventRef.current) {
-      // 改用 getNow() 進行時間差比對
-      const now = getNow(); 
+      // 改用 getNow() 校正
+      const now = getCurrentTime();
       const isStale = now - roomData.lastEvent.timestamp > 3000;
       lastEventRef.current = roomData.lastEvent.timestamp;
       
@@ -527,12 +900,16 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
         return () => clearTimeout(timer);
       }
     }
-  }, [roomData.lastEvent, getNow]); // 依賴 getNow
+  }, [roomData.lastEvent]); // 移除 getNow 依賴，直接在內部調用
 
-  // 計時器邏輯
+  const getCurrentTime = () => {
+    if (typeof getNow === 'function') return getNow();
+    return Date.now();
+  };
+
   useEffect(() => {
     const t = setInterval(() => {
-      const now = getNow(); // 使用校正後時間
+      const now = getCurrentTime();
       
       if (roomData.gameState === 'paused' && roomData.savedState) {
         setTimeLeft(Math.max(0, Math.ceil(roomData.savedState.remainingTurn / 1000)));
@@ -553,15 +930,13 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
       }
     }, 100);
     return () => clearInterval(t);
-  }, [roomData, getNow]);
+  }, [roomData]);
 
   const updateGame = (data) => updateDoc(doc(db, 'rooms', `room_${roomId}`), data);
-  
-  // ★★★ 觸發事件時使用 getNow() ★★★
   const triggerEvent = (text, color, extraData = {}) => {
     updateGame({
       ...extraData,
-      lastEvent: { text, color, timestamp: getNow() } // 使用校正時間
+      lastEvent: { text, color, timestamp: getCurrentTime() } // 使用校正時間
     });
   };
 
@@ -576,7 +951,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
      }
      
      const w = q.pop();
-     const now = getNow();
+     const now = getCurrentTime();
      const newTurnEnd = now + roomData.settings.answerTime*1000;
      
      if (isSkip) {
@@ -591,9 +966,9 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
 
   const handleCorrect = () => {
       let q = [...roomData.wordQueue];
-      if(q.length === 0) { /* refill */ }
+      if(q.length === 0) { /* refill logic */ }
       const w = q.pop();
-      const now = getNow();
+      const now = getCurrentTime();
       const newTurnEnd = now + roomData.settings.answerTime*1000;
 
       triggerEvent(`${currentTeam.name} 得分！`, "text-green-500", {
@@ -605,7 +980,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const handleSteal = (stealingTeamId, stealingTeamName) => {
       let q = [...roomData.wordQueue];
       const w = q.pop();
-      const now = getNow();
+      const now = getCurrentTime();
       const newTurnEnd = now + roomData.settings.answerTime*1000;
 
       triggerEvent(`⚡ ${stealingTeamName} 搶答成功！`, "text-purple-500", {
@@ -614,16 +989,15 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
       });
   };
 
-  // ... (Pause, Resume, Reset, SwitchTeam, ForceEnd 保持不變，略) ...
   const pauseGame = () => {
-      const now = getNow();
+      const now = getCurrentTime();
       const remainingTurn = roomData.turnEndTime ? roomData.turnEndTime - now : 0;
       const remainingRound = roomData.roundEndTime ? roomData.roundEndTime - now : 0;
       updateGame({ gameState: 'paused', savedState: { remainingTurn, remainingRound } });
   };
 
   const resumeGame = () => {
-      const now = getNow();
+      const now = getCurrentTime();
       const newTurnEnd = now + (roomData.savedState?.remainingTurn || 0);
       const newRoundEnd = now + (roomData.savedState?.remainingRound || 0);
       updateGame({ gameState: 'active', turnEndTime: newTurnEnd, roundEndTime: newRoundEnd, savedState: null });
@@ -638,6 +1012,7 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
      const currentIdx = teams.findIndex(t => t.id === currentTeam.id);
      const nextIdx = (currentIdx + 1) % teams.length;
      const nextTeam = teams[nextIdx];
+     
      const nextRound = nextIdx === 0 ? roomData.currentRound + 1 : roomData.currentRound;
      
      if(nextRound > roomData.settings.totalRounds) updateGame({ status: 'finished' });
@@ -653,7 +1028,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   const isRoundOver = roundTimeLeft <= 0 && roomData.gameState === 'active';
   const showControls = isHost && !previewAsPlayer;
   const wordDisplay = showControls ? roomData.currentWord : (roomData.currentWord ? roomData.currentWord.replace(/[^\s]/g, '❓') : "準備中");
-  const opponentTeam = roomData.currentTeam === 'A' ? 'B' : 'A';
 
   return (
     <div className="flex-1 bg-slate-900 text-white flex flex-col relative overflow-hidden">
@@ -675,62 +1049,30 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
            </div>
        )}
 
-       {/* ★★★ 修復 2: 智慧版面判斷 (2隊置中 vs 多隊捲動) ★★★ */}
-       <div className="bg-slate-800 p-4 shadow-md z-10">
-          {teams.length === 2 ? (
-            // === 經典 2 隊對決版面 (絕對置中) ===
-            <div className="flex justify-between items-center max-w-3xl mx-auto px-4">
-               {/* Team A (左) */}
-               <div className={`transition-all duration-300 ${currentTeam.id===teams[0].id?'scale-110 opacity-100':'opacity-50 grayscale'}`}>
-                 <div className="flex flex-col items-center p-3 rounded-2xl border-2 min-w-[100px] shadow-lg" style={{borderColor: teams[0].color, backgroundColor: 'rgba(30, 41, 59, 0.8)'}}>
-                     <span className="font-bold text-sm uppercase tracking-wider mb-1" style={{color: teams[0].color}}>{teams[0].name}</span>
-                     <span className="text-4xl font-black text-white">{roomData.scores[teams[0].id] || 0}</span>
-                 </div>
-               </div>
-
-               {/* Timer (中) */}
-               <div className="text-center flex flex-col items-center mx-4">
-                 <div className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">Round {roomData.currentRound} / {roomData.settings.totalRounds}</div>
-                 <div className={`text-3xl font-mono font-bold px-6 py-2 rounded-xl bg-black/50 border border-slate-600 ${roundTimeLeft < 60 ? 'text-red-400 animate-pulse border-red-500' : 'text-white'}`}>
+       {/* 頂部記分板 */}
+       <div className="bg-slate-800 p-4 shadow-md z-10 overflow-x-auto">
+          <div className="flex justify-center items-center gap-4 min-w-max mx-auto">
+              {teams.map(team => (
+                  <div key={team.id} className={`flex flex-col items-center p-2 rounded-xl border min-w-[80px] transition-all duration-300 ${currentTeam.id===team.id ? 'scale-110 border-yellow-400 bg-slate-700' : 'border-slate-600 opacity-60'}`}>
+                      <span className="font-bold text-xs uppercase tracking-wider" style={{color: team.color || 'white'}}>{team.name}</span>
+                      <span className="text-3xl font-black text-white">{roomData.scores[team.id] || 0}</span>
+                  </div>
+              ))}
+              
+              <div className="flex flex-col items-center ml-4 border-l border-slate-600 pl-4">
+                 <div className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">R {roomData.currentRound}/{roomData.settings.totalRounds}</div>
+                 <div className={`text-2xl font-mono font-bold px-2 py-1 rounded bg-black/40 ${roundTimeLeft < 60 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
                     {isRoundOver ? "00:00" : `${Math.floor(roundTimeLeft/60)}:${String(roundTimeLeft%60).padStart(2,'0')}`}
                  </div>
-                 {isHost && <button onClick={()=>setPreviewAsPlayer(!previewAsPlayer)} className="text-[10px] bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-full mt-2 flex items-center gap-1 transition-colors">{previewAsPlayer ? <EyeOff size={12}/> : <Eye size={12}/>} {previewAsPlayer?"退出預覽":"預覽玩家"}</button>}
-               </div>
-
-               {/* Team B (右) */}
-               <div className={`transition-all duration-300 ${currentTeam.id===teams[1].id?'scale-110 opacity-100':'opacity-50 grayscale'}`}>
-                 <div className="flex flex-col items-center p-3 rounded-2xl border-2 min-w-[100px] shadow-lg" style={{borderColor: teams[1].color, backgroundColor: 'rgba(30, 41, 59, 0.8)'}}>
-                     <span className="font-bold text-sm uppercase tracking-wider mb-1" style={{color: teams[1].color}}>{teams[1].name}</span>
-                     <span className="text-4xl font-black text-white">{roomData.scores[teams[1].id] || 0}</span>
-                 </div>
-               </div>
-            </div>
-          ) : (
-            // === 多隊伍捲動版面 (維持原樣) ===
-            <div className="flex justify-start md:justify-center items-center gap-4 overflow-x-auto pb-2">
-                {teams.map(team => (
-                    <div key={team.id} className={`flex flex-col items-center p-2 rounded-xl border min-w-[80px] transition-all duration-300 ${currentTeam.id===team.id ? 'scale-110 bg-slate-700' : 'border-slate-600 opacity-60'}`} style={{borderColor: currentTeam.id===team.id ? team.color : ''}}>
-                        <span className="font-bold text-xs uppercase tracking-wider" style={{color: team.color || 'white'}}>{team.name}</span>
-                        <span className="text-3xl font-black text-white">{roomData.scores[team.id] || 0}</span>
-                    </div>
-                ))}
-                
-                <div className="flex flex-col items-center ml-4 border-l border-slate-600 pl-4 sticky right-0 bg-slate-800 p-2">
-                   <div className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">R {roomData.currentRound}/{roomData.settings.totalRounds}</div>
-                   <div className={`text-2xl font-mono font-bold px-2 py-1 rounded bg-black/40 ${roundTimeLeft < 60 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
-                      {isRoundOver ? "00:00" : `${Math.floor(roundTimeLeft/60)}:${String(roundTimeLeft%60).padStart(2,'0')}`}
-                   </div>
-                   {isHost && <button onClick={()=>setPreviewAsPlayer(!previewAsPlayer)} className="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded mt-1 flex items-center gap-1">{previewAsPlayer ? <EyeOff size={10}/> : <Eye size={10}/>} 預覽</button>}
-                </div>
-            </div>
-          )}
+                 {isHost && <button onClick={()=>setPreviewAsPlayer(!previewAsPlayer)} className="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded mt-1 flex items-center gap-1">{previewAsPlayer ? <EyeOff size={10}/> : <Eye size={10}/>} 預覽</button>}
+              </div>
+          </div>
        </div>
 
        {/* 主遊戲區 */}
        <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 text-center relative">
           <div className={`absolute inset-0 bg-gradient-to-b from-indigo-900/20 to-slate-900 pointer-events-none`}></div>
 
-          {/* 狀態：回合結束 */}
           {isRoundOver ? (
               <div className="z-10 animate-in zoom-in duration-300 bg-slate-800/80 p-8 rounded-3xl border border-slate-600 backdrop-blur-md">
                   <Timer size={64} className="text-red-400 mx-auto mb-4"/>
@@ -742,9 +1084,9 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
               </div>
           ) : roomData.gameState === 'idle' ? (
              <div className="z-10 animate-in zoom-in duration-300">
-                <h2 className="text-4xl font-bold mb-6 drop-shadow-lg">輪到 <span className="text-5xl block mt-2" style={{color: currentTeam.color}}>{currentTeam.name}</span></h2>
+                <h2 className="text-4xl font-bold mb-6 drop-shadow-lg">輪到 <span className="text-yellow-400 text-5xl block mt-2">{currentTeam.name}</span></h2>
                 {showControls ? <button onClick={() => {
-                   const now = getNow();
+                   const now = getCurrentTime();
                    const roundEnd = (roomData.roundEndTime && roomData.roundEndTime > now) ? roomData.roundEndTime : now + roomData.settings.roundDuration * 1000;
                    updateGame({ gameState: 'active', roundEndTime: roundEnd });
                    nextWord();
@@ -829,7 +1171,6 @@ function GameInterface({roomData, isHost, roomId, previewAsPlayer, setPreviewAsP
   );
 }
 
-// ... (ResultView, SettingsModal 保持不變)
 function ResultView({roomData, isHost, roomId}) {
    const teams = roomData.settings.teams;
    const sortedTeams = [...teams].sort((a, b) => (roomData.scores[b.id] || 0) - (roomData.scores[a.id] || 0));
