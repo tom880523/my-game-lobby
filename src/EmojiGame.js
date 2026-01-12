@@ -620,6 +620,47 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
         }
     };
 
+    // 上傳題庫到雲端 (僅管理員)
+    const uploadCategoryToCloud = async (category) => {
+        if (!isAdmin) return alert("權限不足：您必須是管理員才能上傳題庫到雲端！");
+        if (!category || !category.questions || category.questions.length === 0) {
+            return alert("此題庫沒有題目，無法上傳！");
+        }
+
+        try {
+            // 檢查是否有同名題庫
+            const q = query(collection(db, 'emoji_cloud_decks'), where("name", "==", category.name));
+            const snapshot = await getDocs(q);
+
+            if (!snapshot.empty) {
+                const confirmOverwrite = window.confirm(`雲端已存在同名題庫「${category.name}」，確定要覆蓋嗎？`);
+                if (!confirmOverwrite) return;
+
+                const existingDoc = snapshot.docs[0];
+                await updateDoc(doc(db, 'emoji_cloud_decks', existingDoc.id), {
+                    questions: category.questions,
+                    questionCount: category.questions.length,
+                    updatedAt: serverTimestamp(),
+                    authorId: currentUser?.uid || 'anon'
+                });
+                alert(`題庫「${category.name}」已更新！代碼：\n${existingDoc.id}`);
+            } else {
+                const docRef = await addDoc(collection(db, 'emoji_cloud_decks'), {
+                    name: category.name,
+                    questions: category.questions,
+                    questionCount: category.questions.length,
+                    createdAt: serverTimestamp(),
+                    authorId: currentUser?.uid || 'anon',
+                    authorName: currentUser?.displayName || '匿名'
+                });
+                alert(`題庫已上傳！代碼：\n${docRef.id}`);
+            }
+        } catch (e) {
+            console.error('[EmojiRoomView] 上傳失敗:', e);
+            alert("上傳失敗：" + e.message);
+        }
+    };
+
     // 隨機分組
     const randomize = async () => {
         console.log('[EmojiRoomView] 隨機分組');
@@ -963,15 +1004,27 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
                                                 <span className="text-white text-sm">{cat.name}</span>
                                                 <span className="text-slate-400 text-xs">({cat.questions?.length || 0}題)</span>
                                             </div>
-                                            <button
-                                                onClick={async () => {
-                                                    const updated = roomData.customCategories.filter((_, i) => i !== idx);
-                                                    await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updated });
-                                                }}
-                                                className="text-red-400 hover:text-red-300 p-1"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
+                                            <div className="flex items-center gap-1">
+                                                {/* 管理員上傳雲端按鈕 */}
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={() => uploadCategoryToCloud(cat)}
+                                                        className="text-cyan-400 hover:text-cyan-300 p-1"
+                                                        title="上傳至雲端"
+                                                    >
+                                                        <Cloud size={14} />
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={async () => {
+                                                        const updated = roomData.customCategories.filter((_, i) => i !== idx);
+                                                        await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updated });
+                                                    }}
+                                                    className="text-red-400 hover:text-red-300 p-1"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
