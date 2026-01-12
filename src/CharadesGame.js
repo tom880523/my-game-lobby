@@ -1188,7 +1188,7 @@ function ResultView({ roomData, isHost, roomId }) {
 
                 <div>
                     <h2 className="text-slate-400 font-bold uppercase tracking-widest mb-2">
-                        {winners.length > 1 ? "WINNERS" : "WINNER"}
+                        {winners.length > 1 ? "🤝 平手 (WINNERS)" : "🏆 冠軍 (WINNER)"}
                     </h2>
                     <h1 className="text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-orange-300 to-yellow-300 leading-tight">
                         {winners.map(w => w.name).join(" & ")}
