@@ -572,7 +572,8 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
     const [newCatName, setNewCatName] = useState('');
     const [importCode, setImportCode] = useState('');
     const [editingCategory, setEditingCategory] = useState(null); // 編輯中的題庫
-    const [newWordInput, setNewWordInput] = useState(''); // 新題目輸入
+    const [emojiInput, setEmojiInput] = useState(''); // 新題目 - Emoji 欄
+    const [answerInput, setAnswerInput] = useState(''); // 新題目 - 答案欄
 
     const players = roomData.players || [];
     const teams = roomData.settings.teams || [];
@@ -585,18 +586,17 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
     // 主持人可以加入隊伍，所以不需要分開顯示
     const allTeamPlayers = (teamId) => players.filter(p => p.team === teamId);
 
-    // 新增題目到題庫
+    // 新增題目到題庫 (雙輸入框版本)
     const addWordToCategory = async () => {
-        if (!newWordInput.trim() || !editingCategory) return;
-        const parts = newWordInput.trim().split('|');
-        if (parts.length < 2) {
-            alert("格式錯誤！請使用「Emoji|答案」格式，例如：🐔✈🐶💃|雞飛狗跳");
+        if (!emojiInput.trim() || !answerInput.trim() || !editingCategory) {
+            if (!emojiInput.trim()) alert("請輸入 Emoji 題目！");
+            else if (!answerInput.trim()) alert("請輸入答案！");
             return;
         }
         const newQuestion = {
             id: `q_${Date.now()}`,
-            emojis: parts[0].trim(),
-            answer: parts[1].trim(),
+            emojis: emojiInput.trim(),
+            answer: answerInput.trim(),
             category: editingCategory.name
         };
         const updatedQuestions = [...(editingCategory.questions || []), newQuestion];
@@ -604,7 +604,54 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
         const updatedCategories = customCategories.map(c => c.id === editingCategory.id ? updatedCat : c);
         await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updatedCategories });
         setEditingCategory(updatedCat);
-        setNewWordInput('');
+        setEmojiInput('');
+        setAnswerInput('');
+    };
+
+    // CSV 匯入題目 (格式: Emoji|答案)
+    const handleCSVImport = async (e) => {
+        if (!editingCategory) return;
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            const text = ev.target?.result;
+            if (typeof text !== 'string') return;
+
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            const newQuestions = [];
+            let skipped = 0;
+
+            lines.forEach((line, idx) => {
+                const parts = line.split('|');
+                if (parts.length >= 2 && parts[0].trim() && parts[1].trim()) {
+                    newQuestions.push({
+                        id: `q_${Date.now()}_${idx}`,
+                        emojis: parts[0].trim(),
+                        answer: parts[1].trim(),
+                        category: editingCategory.name
+                    });
+                } else {
+                    skipped++;
+                }
+            });
+
+            if (newQuestions.length === 0) {
+                alert("沒有找到有效的題目！請確認格式為「Emoji|答案」");
+                return;
+            }
+
+            const updatedQuestions = [...(editingCategory.questions || []), ...newQuestions];
+            const updatedCat = { ...editingCategory, questions: updatedQuestions };
+            const updatedCategories = customCategories.map(c => c.id === editingCategory.id ? updatedCat : c);
+            await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updatedCategories });
+            setEditingCategory(updatedCat);
+
+            alert(`成功匯入 ${newQuestions.length} 題！${skipped > 0 ? `\n跳過 ${skipped} 行格式錯誤` : ''}`);
+        };
+        reader.readAsText(file);
+        e.target.value = ''; // 重設 input
     };
 
     // 刪除題目
@@ -958,93 +1005,103 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
                         </ul>
                     </div>
 
-                    {/* 題庫設定 (僅主持人可見) */}
-                    {isHost && (
+                    {/* 題庫設定 (主持人可見，或有權限的玩家可見題庫列表) */}
+                    {(isHost || canAddWords) && (
                         <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
                             <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                                <Library className="text-cyan-400" size={18} /> 題庫設定
+                                <Library className="text-cyan-400" size={18} />
+                                {isHost ? '題庫設定' : '協作題庫'}
                             </h3>
 
-                            {/* 內建題庫開關 */}
-                            <div className="flex items-center justify-between mb-4 p-3 bg-slate-700/50 rounded-xl">
-                                <span className="text-white">使用內建題庫</span>
-                                <button
-                                    onClick={async () => {
-                                        await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), {
-                                            useDefaultQuestions: !roomData.useDefaultQuestions
-                                        });
-                                    }}
-                                    className={`w-12 h-6 rounded-full transition-colors ${roomData.useDefaultQuestions !== false ? 'bg-green-500' : 'bg-slate-600'}`}
-                                >
-                                    <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${roomData.useDefaultQuestions !== false ? 'translate-x-6' : 'translate-x-0.5'}`} />
-                                </button>
-                            </div>
+                            {/* 以下功能僅主持人可見 */}
+                            {isHost && (
+                                <>
+                                    {/* 內建題庫開關 */}
+                                    <div className="flex items-center justify-between mb-4 p-3 bg-slate-700/50 rounded-xl">
+                                        <span className="text-white">使用內建題庫</span>
+                                        <button
+                                            onClick={async () => {
+                                                await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), {
+                                                    useDefaultQuestions: !roomData.useDefaultQuestions
+                                                });
+                                            }}
+                                            className={`w-12 h-6 rounded-full transition-colors ${roomData.useDefaultQuestions !== false ? 'bg-green-500' : 'bg-slate-600'}`}
+                                        >
+                                            <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${roomData.useDefaultQuestions !== false ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                                        </button>
+                                    </div>
 
-                            {/* 新增本地題庫 */}
-                            <div className="flex gap-2 mb-3">
-                                <input
-                                    value={newCatName}
-                                    onChange={(e) => setNewCatName(e.target.value)}
-                                    placeholder="新題庫名稱"
-                                    className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-slate-400"
-                                    onKeyDown={(e) => e.key === 'Enter' && addLocalCategory()}
-                                />
-                                <button
-                                    onClick={addLocalCategory}
-                                    className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg font-medium flex items-center gap-1 transition"
-                                >
-                                    <Plus size={16} /> 新增
-                                </button>
-                            </div>
+                                    {/* 新增本地題庫 */}
+                                    <div className="flex gap-2 mb-3">
+                                        <input
+                                            value={newCatName}
+                                            onChange={(e) => setNewCatName(e.target.value)}
+                                            placeholder="新題庫名稱"
+                                            className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-slate-400"
+                                            onKeyDown={(e) => e.key === 'Enter' && addLocalCategory()}
+                                        />
+                                        <button
+                                            onClick={addLocalCategory}
+                                            className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg font-medium flex items-center gap-1 transition"
+                                        >
+                                            <Plus size={16} /> 新增
+                                        </button>
+                                    </div>
 
-                            {/* 代碼下載題庫 */}
-                            <div className="flex gap-2 mb-3">
-                                <input
-                                    value={importCode}
-                                    onChange={(e) => setImportCode(e.target.value)}
-                                    placeholder="輸入題庫代碼 (Document ID)"
-                                    className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-slate-400 font-mono"
-                                    onKeyDown={(e) => e.key === 'Enter' && importDeckByCode()}
-                                />
-                                <button
-                                    onClick={importDeckByCode}
-                                    className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg font-medium flex items-center gap-1 transition"
-                                >
-                                    <Download size={16} /> 下載
-                                </button>
-                            </div>
+                                    {/* 代碼下載題庫 */}
+                                    <div className="flex gap-2 mb-3">
+                                        <input
+                                            value={importCode}
+                                            onChange={(e) => setImportCode(e.target.value)}
+                                            placeholder="輸入題庫代碼 (Document ID)"
+                                            className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-slate-400 font-mono"
+                                            onKeyDown={(e) => e.key === 'Enter' && importDeckByCode()}
+                                        />
+                                        <button
+                                            onClick={importDeckByCode}
+                                            className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg font-medium flex items-center gap-1 transition"
+                                        >
+                                            <Download size={16} /> 下載
+                                        </button>
+                                    </div>
 
-                            {/* 雲端題庫圖書館按鈕 */}
-                            <button
-                                onClick={() => setShowCloudLibrary(true)}
-                                className="w-full py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-xl font-medium flex items-center justify-center gap-2 transition"
-                            >
-                                <Cloud size={18} /> 瀏覽雲端題庫圖書館
-                            </button>
+                                    {/* 雲端題庫圖書館按鈕 */}
+                                    <button
+                                        onClick={() => setShowCloudLibrary(true)}
+                                        className="w-full py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-xl font-medium flex items-center justify-center gap-2 transition"
+                                    >
+                                        <Cloud size={18} /> 瀏覽雲端題庫圖書館
+                                    </button>
+                                </>
+                            )}
 
-
-                            {/* 已匯入的自訂題庫 */}
+                            {/* 已匯入的自訂題庫 (所有有權限者可見) */}
                             {roomData.customCategories && roomData.customCategories.length > 0 && (
-                                <div className="mt-4 space-y-2">
-                                    <div className="text-sm text-slate-400">已匯入題庫：</div>
+                                <div className={`${isHost ? 'mt-4' : ''} space-y-2`}>
+                                    <div className="text-sm text-slate-400">
+                                        {isHost ? '已匯入題庫：' : '點擊編輯按鈕新增題目：'}
+                                    </div>
                                     {roomData.customCategories.map((cat, idx) => (
                                         <div key={idx} className="flex items-center justify-between p-2 bg-slate-700/50 rounded-lg">
                                             <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={async () => {
-                                                        const updated = [...roomData.customCategories];
-                                                        updated[idx] = { ...updated[idx], enabled: !updated[idx].enabled };
-                                                        await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updated });
-                                                    }}
-                                                    className={`w-4 h-4 rounded border ${cat.enabled ? 'bg-green-500 border-green-500' : 'border-slate-500'}`}
-                                                >
-                                                    {cat.enabled && <Check size={12} className="text-white" />}
-                                                </button>
+                                                {/* 啟用/停用勾選框 (僅主持人) */}
+                                                {isHost && (
+                                                    <button
+                                                        onClick={async () => {
+                                                            const updated = [...roomData.customCategories];
+                                                            updated[idx] = { ...updated[idx], enabled: !updated[idx].enabled };
+                                                            await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updated });
+                                                        }}
+                                                        className={`w-4 h-4 rounded border ${cat.enabled ? 'bg-green-500 border-green-500' : 'border-slate-500'}`}
+                                                    >
+                                                        {cat.enabled && <Check size={12} className="text-white" />}
+                                                    </button>
+                                                )}
                                                 <span className="text-white text-sm">{cat.name}</span>
                                                 <span className="text-slate-400 text-xs">({cat.questions?.length || 0}題)</span>
                                             </div>
                                             <div className="flex items-center gap-1">
-                                                {/* 編輯題庫按鈕 */}
+                                                {/* 編輯題庫按鈕 (所有有權限者可見) */}
                                                 <button
                                                     onClick={() => setEditingCategory(cat)}
                                                     className="text-yellow-400 hover:text-yellow-300 p-1"
@@ -1062,18 +1119,28 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
                                                         <Cloud size={14} />
                                                     </button>
                                                 )}
-                                                <button
-                                                    onClick={async () => {
-                                                        const updated = roomData.customCategories.filter((_, i) => i !== idx);
-                                                        await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updated });
-                                                    }}
-                                                    className="text-red-400 hover:text-red-300 p-1"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
+                                                {/* 刪除題庫 (僅主持人) */}
+                                                {isHost && (
+                                                    <button
+                                                        onClick={async () => {
+                                                            const updated = roomData.customCategories.filter((_, i) => i !== idx);
+                                                            await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updated });
+                                                        }}
+                                                        className="text-red-400 hover:text-red-300 p-1"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+
+                            {/* 玩家提示 (非主持人) */}
+                            {!isHost && (!roomData.customCategories || roomData.customCategories.length === 0) && (
+                                <div className="text-center text-slate-400 py-4">
+                                    主持人尚未建立可協作的題庫
                                 </div>
                             )}
                         </div>
@@ -1138,20 +1205,37 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
 
                         {/* 新增題目 (主持人或有權限的玩家) */}
                         {canAddWords && (
-                            <div className="flex gap-2 mb-4">
-                                <input
-                                    value={newWordInput}
-                                    onChange={(e) => setNewWordInput(e.target.value)}
-                                    placeholder="Emoji|答案，例如：🐔✈🐶💃|雞飛狗跳"
-                                    className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400"
-                                    onKeyDown={(e) => e.key === 'Enter' && addWordToCategory()}
-                                />
-                                <button
-                                    onClick={addWordToCategory}
-                                    className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg font-medium flex items-center gap-1"
-                                >
-                                    <Plus size={16} /> 新增
-                                </button>
+                            <div className="space-y-3 mb-4">
+                                {/* 雙輸入框 */}
+                                <div className="flex gap-2">
+                                    <input
+                                        value={emojiInput}
+                                        onChange={(e) => setEmojiInput(e.target.value)}
+                                        placeholder="輸入 Emoji，如 🐔🥚🦴"
+                                        className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 text-xl"
+                                    />
+                                    <input
+                                        value={answerInput}
+                                        onChange={(e) => setAnswerInput(e.target.value)}
+                                        placeholder="輸入答案，如 雞蛋裡挑骨頭"
+                                        className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400"
+                                        onKeyDown={(e) => e.key === 'Enter' && addWordToCategory()}
+                                    />
+                                    <button
+                                        onClick={addWordToCategory}
+                                        className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg font-medium flex items-center gap-1"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                </div>
+
+                                {/* CSV 匯入按鈕 (僅主持人) */}
+                                {isHost && (
+                                    <label className="flex items-center gap-2 px-3 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer text-sm text-slate-300 w-fit transition">
+                                        <Download size={14} /> 匯入 CSV (格式: Emoji|答案)
+                                        <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVImport} />
+                                    </label>
+                                )}
                             </div>
                         )}
 
