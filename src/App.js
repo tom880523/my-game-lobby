@@ -128,13 +128,14 @@ function MainApp() {
     await signOut(auth);
   };
 
-  // ★★★ 關鍵修正：將 getNow 和 user 傳遞給 CharadesGame ★★★
+  // ★★★ 關鍵修正：將 getNow、user 和 isAdmin 傳遞給 CharadesGame ★★★
   if (currentApp === 'charades') {
     return (
       <CharadesGame
         onBack={() => setCurrentApp('home')}
         getNow={getNow}   // 傳遞時間校正函式
         currentUser={user} // 傳遞使用者狀態 (選用，因為 CharadesGame 也有自己監聽)
+        isAdmin={isAdmin}
       />
     );
   }

@@ -9,7 +9,7 @@ import {
     Users, Play, Settings, Plus, Check, X,
     Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown,
-    Send, Sparkles, PartyPopper, Library, Download, Cloud, StopCircle
+    Send, Sparkles, PartyPopper, Library, Download, Cloud, StopCircle, Edit
 } from 'lucide-react';
 
 // 引入共用 Firebase
@@ -27,7 +27,10 @@ const DEFAULT_SETTINGS = {
     teams: [
         { id: 'team_a', name: 'A 隊', color: '#ef4444' },
         { id: 'team_b', name: 'B 隊', color: '#3b82f6' }
-    ]
+    ],
+    permissions: {
+        allowPlayerAddWords: false // 允許參賽者新增題目
+    }
 };
 
 const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -559,7 +562,6 @@ function EmojiCloudLibraryModal({ onClose, onImport, currentUser, isAdmin }) {
         </div>
     );
 }
-
 // =================================================================
 // Room View (等待房間)
 // =================================================================
@@ -569,14 +571,51 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
     const [showCloudLibrary, setShowCloudLibrary] = useState(false);
     const [newCatName, setNewCatName] = useState('');
     const [importCode, setImportCode] = useState('');
+    const [editingCategory, setEditingCategory] = useState(null); // 編輯中的題庫
+    const [newWordInput, setNewWordInput] = useState(''); // 新題目輸入
 
     const players = roomData.players || [];
     const teams = roomData.settings.teams || [];
     const unassigned = players.filter(p => !p.team);
     const customCategories = roomData.customCategories || [];
 
+    // 權限判定：是否允許新增題目
+    const canAddWords = isHost || roomData.settings?.permissions?.allowPlayerAddWords;
+
     // 主持人可以加入隊伍，所以不需要分開顯示
     const allTeamPlayers = (teamId) => players.filter(p => p.team === teamId);
+
+    // 新增題目到題庫
+    const addWordToCategory = async () => {
+        if (!newWordInput.trim() || !editingCategory) return;
+        const parts = newWordInput.trim().split('|');
+        if (parts.length < 2) {
+            alert("格式錯誤！請使用「Emoji|答案」格式，例如：🐔✈🐶💃|雞飛狗跳");
+            return;
+        }
+        const newQuestion = {
+            id: `q_${Date.now()}`,
+            emojis: parts[0].trim(),
+            answer: parts[1].trim(),
+            category: editingCategory.name
+        };
+        const updatedQuestions = [...(editingCategory.questions || []), newQuestion];
+        const updatedCat = { ...editingCategory, questions: updatedQuestions };
+        const updatedCategories = customCategories.map(c => c.id === editingCategory.id ? updatedCat : c);
+        await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updatedCategories });
+        setEditingCategory(updatedCat);
+        setNewWordInput('');
+    };
+
+    // 刪除題目
+    const removeWordFromCategory = async (questionId) => {
+        if (!editingCategory) return;
+        const updatedQuestions = editingCategory.questions.filter(q => q.id !== questionId);
+        const updatedCat = { ...editingCategory, questions: updatedQuestions };
+        const updatedCategories = customCategories.map(c => c.id === editingCategory.id ? updatedCat : c);
+        await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), { customCategories: updatedCategories });
+        setEditingCategory(updatedCat);
+    };
 
     // 新增本地題庫分類
     const addLocalCategory = async () => {
@@ -1005,6 +1044,14 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
                                                 <span className="text-slate-400 text-xs">({cat.questions?.length || 0}題)</span>
                                             </div>
                                             <div className="flex items-center gap-1">
+                                                {/* 編輯題庫按鈕 */}
+                                                <button
+                                                    onClick={() => setEditingCategory(cat)}
+                                                    className="text-yellow-400 hover:text-yellow-300 p-1"
+                                                    title="編輯題庫"
+                                                >
+                                                    <Edit size={14} />
+                                                </button>
                                                 {/* 管理員上傳雲端按鈕 */}
                                                 {isAdmin && (
                                                     <button
@@ -1074,6 +1121,73 @@ function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser
                     currentUser={currentUser}
                     isAdmin={isAdmin}
                 />
+            )}
+
+            {/* 編輯題庫 Modal */}
+            {editingCategory && (
+                <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-800 w-full max-w-xl max-h-[85vh] rounded-2xl p-6 border border-slate-700 flex flex-col">
+                        <div className="flex justify-between items-center border-b border-slate-700 pb-4 mb-4">
+                            <h3 className="font-bold text-xl text-white flex items-center gap-2">
+                                <Edit className="text-yellow-400" /> 編輯題庫：{editingCategory.name}
+                            </h3>
+                            <button onClick={() => setEditingCategory(null)} className="text-slate-400 hover:text-white">
+                                <X />
+                            </button>
+                        </div>
+
+                        {/* 新增題目 (主持人或有權限的玩家) */}
+                        {canAddWords && (
+                            <div className="flex gap-2 mb-4">
+                                <input
+                                    value={newWordInput}
+                                    onChange={(e) => setNewWordInput(e.target.value)}
+                                    placeholder="Emoji|答案，例如：🐔✈🐶💃|雞飛狗跳"
+                                    className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400"
+                                    onKeyDown={(e) => e.key === 'Enter' && addWordToCategory()}
+                                />
+                                <button
+                                    onClick={addWordToCategory}
+                                    className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg font-medium flex items-center gap-1"
+                                >
+                                    <Plus size={16} /> 新增
+                                </button>
+                            </div>
+                        )}
+
+                        {/* 題目列表 */}
+                        <div className="flex-1 overflow-y-auto space-y-2">
+                            {(!editingCategory.questions || editingCategory.questions.length === 0) ? (
+                                <div className="text-center text-slate-400 py-8">此題庫尚無題目</div>
+                            ) : (
+                                editingCategory.questions.map((q, idx) => (
+                                    <div key={q.id || idx} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-2xl">{q.emojis}</span>
+                                            <span className="text-white">{q.answer}</span>
+                                        </div>
+                                        {/* 主持人可刪除 */}
+                                        {isHost && (
+                                            <button
+                                                onClick={() => removeWordFromCategory(q.id)}
+                                                className="text-red-400 hover:text-red-300 p-1"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div className="text-sm text-slate-400 mt-4 pt-4 border-t border-slate-700 flex justify-between">
+                            <span>共 {editingCategory.questions?.length || 0} 題</span>
+                            <button onClick={() => setEditingCategory(null)} className="text-cyan-400 hover:text-cyan-300">
+                                完成編輯
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -1636,6 +1750,26 @@ function SettingsModal({ localSettings, setLocalSettings, setShowSettings, onSav
                             onChange={(e) => updateSetting('pointsCorrect', parseInt(e.target.value) || 3)}
                             className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:ring-2 focus:ring-yellow-400 outline-none"
                         />
+                    </div>
+
+                    {/* 權限設定 */}
+                    <div className="border-t border-slate-700 pt-4 mt-4">
+                        <label className="text-sm text-slate-300 mb-3 block">權限設定</label>
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={localSettings.permissions?.allowPlayerAddWords || false}
+                                onChange={(e) => setLocalSettings(prev => ({
+                                    ...prev,
+                                    permissions: {
+                                        ...prev.permissions,
+                                        allowPlayerAddWords: e.target.checked
+                                    }
+                                }))}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-yellow-400 focus:ring-yellow-400"
+                            />
+                            <span className="text-white">允許參賽者新增題目</span>
+                        </label>
                     </div>
                 </div>
 
