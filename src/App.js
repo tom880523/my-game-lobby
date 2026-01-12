@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc, addDoc, collection, serverTimestamp, onSnapshot, deleteDoc } from 'firebase/firestore'; // 補上缺少的引用
-import { 
+import {
   Users, Gamepad2, ArrowLeft, LogIn, Construction
 } from 'lucide-react';
 
 // 引用我們拆分出去的檔案
-import { auth, db } from './firebase'; 
-import CharadesGame from './CharadesGame'; 
+import { auth, db } from './firebase';
+import CharadesGame from './CharadesGame';
+import EmojiGame from './EmojiGame';
 
 export default function App() {
   return (
@@ -87,7 +88,7 @@ function MainApp() {
         const tempDocRef = await addDoc(collection(db, 'time_sync'), {
           timestamp: serverTimestamp()
         });
-        
+
         const unsubscribe = onSnapshot(tempDocRef, (snap) => {
           if (snap.exists() && snap.data().timestamp && !snap.metadata.hasPendingWrites) {
             const endTime = Date.now();
@@ -96,16 +97,16 @@ function MainApp() {
             const latency = rtt / 2;
             const offset = serverTime - (endTime - latency);
             setServerTimeOffset(offset);
-            
+
             unsubscribe();
-            deleteDoc(tempDocRef).catch(()=>{});
+            deleteDoc(tempDocRef).catch(() => { });
           }
         });
       } catch (e) {
         console.error("Time sync failed:", e);
       }
     };
-    
+
     if (db) syncTime();
   }, []);
 
@@ -130,20 +131,32 @@ function MainApp() {
   // ★★★ 關鍵修正：將 getNow 和 user 傳遞給 CharadesGame ★★★
   if (currentApp === 'charades') {
     return (
-      <CharadesGame 
-        onBack={() => setCurrentApp('home')} 
+      <CharadesGame
+        onBack={() => setCurrentApp('home')}
         getNow={getNow}   // 傳遞時間校正函式
         currentUser={user} // 傳遞使用者狀態 (選用，因為 CharadesGame 也有自己監聽)
       />
     );
   }
 
+  // ★★★ Emoji 猜詞語遊戲路由 ★★★
+  if (currentApp === 'emoji') {
+    return (
+      <EmojiGame
+        onBack={() => setCurrentApp('home')}
+        getNow={getNow}
+        currentUser={user}
+        isAdmin={isAdmin}
+      />
+    );
+  }
+
   // --- 大廳介面 ---
   return (
-    <GameLobby 
-      onSelectGame={setCurrentApp} 
-      user={user} 
-      isAdmin={isAdmin} 
+    <GameLobby
+      onSelectGame={setCurrentApp}
+      user={user}
+      isAdmin={isAdmin}
       authLoading={authLoading}
       handleLogin={handleLogin}
       handleLogout={handleLogout}
@@ -153,7 +166,7 @@ function MainApp() {
 
 // --- 獨立的大廳組件 ---
 function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, handleLogout }) {
-  
+
   useEffect(() => {
     document.title = "遊戲大廳";
   }, []);
@@ -162,65 +175,81 @@ function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, hand
     <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center relative overflow-hidden">
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
       <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-      
+
       <header className="w-full max-w-4xl flex justify-between items-center mb-12 z-10">
-         <h1 className="text-3xl font-bold flex items-center gap-3 bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
-            <Gamepad2 className="text-indigo-400 w-8 h-8" />
-            遊戲大廳
-         </h1>
-         <div>
-             {authLoading ? (
-                 <span className="text-slate-400 text-sm">連線中...</span>
-             ) : (user && !user.isAnonymous) ? (
-                 <div className="flex items-center gap-2">
-                     {isAdmin && <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded font-bold shadow-glow">Admin</span>}
-                     <button onClick={handleLogout} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-full text-sm transition border border-slate-700">
-                         {user.photoURL && <img src={user.photoURL} alt="user" className="w-6 h-6 rounded-full"/>}
-                         <span>登出</span>
-                     </button>
-                 </div>
-             ) : (
-                 <button onClick={handleLogin} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-full text-sm font-bold transition shadow-lg">
-                     <LogIn size={16}/> 登入 Google (啟用管理權限)
-                 </button>
-             )}
-         </div>
+        <h1 className="text-3xl font-bold flex items-center gap-3 bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
+          <Gamepad2 className="text-indigo-400 w-8 h-8" />
+          遊戲大廳
+        </h1>
+        <div>
+          {authLoading ? (
+            <span className="text-slate-400 text-sm">連線中...</span>
+          ) : (user && !user.isAnonymous) ? (
+            <div className="flex items-center gap-2">
+              {isAdmin && <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded font-bold shadow-glow">Admin</span>}
+              <button onClick={handleLogout} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-full text-sm transition border border-slate-700">
+                {user.photoURL && <img src={user.photoURL} alt="user" className="w-6 h-6 rounded-full" />}
+                <span>登出</span>
+              </button>
+            </div>
+          ) : (
+            <button onClick={handleLogin} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-full text-sm font-bold transition shadow-lg">
+              <LogIn size={16} /> 登入 Google (啟用管理權限)
+            </button>
+          )}
+        </div>
       </header>
 
       <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-4xl z-10">
-        <button 
+        <button
           onClick={() => onSelectGame('charades')}
           disabled={authLoading}
           className={`group relative border rounded-2xl p-1 overflow-hidden transition-all duration-300 text-left shadow-xl ${authLoading ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700 hover:scale-105'}`}
         >
           <div className="h-full rounded-xl p-6 flex flex-col justify-between min-h-[200px]">
-             <div>
-               <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
-                  <Users className="text-white w-8 h-8" />
-               </div>
-               <h2 className="text-2xl font-bold mb-2 text-white">比手畫腳大亂鬥</h2>
-               <p className="text-slate-400 text-sm">經典派對遊戲！內建豐富題庫、支援搶答、自訂多重隊伍與即時計分。</p>
-             </div>
-             <div className="flex items-center gap-2 text-indigo-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
-                {authLoading ? "連線中..." : "進入遊戲"} <ArrowLeft className="rotate-180" size={16}/>
-             </div>
+            <div>
+              <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
+                <Users className="text-white w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2 text-white">比手畫腳大亂鬥</h2>
+              <p className="text-slate-400 text-sm">經典派對遊戲！內建豐富題庫、支援搶答、自訂多重隊伍與即時計分。</p>
+            </div>
+            <div className="flex items-center gap-2 text-indigo-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
+              {authLoading ? "連線中..." : "進入遊戲"} <ArrowLeft className="rotate-180" size={16} />
+            </div>
           </div>
         </button>
 
-        {[
-          { icon: <Construction />, title: "間諜家家酒", desc: "誰是臥底？開發中..." },
-          { icon: <Construction />, title: "你畫我猜", desc: "靈魂繪師大顯身手..." }
-        ].map((item, idx) => (
-          <div key={idx} className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 flex flex-col justify-between min-h-[200px] opacity-50 cursor-not-allowed">
-             <div>
-               <div className="w-14 h-14 bg-slate-700 rounded-2xl flex items-center justify-center mb-4">
-                  {React.cloneElement(item.icon, { className: "text-slate-500 w-8 h-8" })}
-               </div>
-               <h2 className="text-xl font-bold text-slate-500 mb-2">{item.title}</h2>
-               <p className="text-slate-600 text-sm">{item.desc}</p>
-             </div>
+        {/* Emoji 猜詞語 - 可點擊 */}
+        <button
+          onClick={() => onSelectGame('emoji')}
+          disabled={authLoading}
+          className={`group relative border rounded-2xl p-1 overflow-hidden transition-all duration-300 text-left shadow-xl ${authLoading ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700 hover:scale-105'}`}
+        >
+          <div className="h-full rounded-xl p-6 flex flex-col justify-between min-h-[200px]">
+            <div>
+              <div className="w-14 h-14 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
+                <span className="text-2xl">🎯</span>
+              </div>
+              <h2 className="text-2xl font-bold mb-2 text-white">Emoji 猜詞語</h2>
+              <p className="text-slate-400 text-sm">看 Emoji 猜答案！多人即時搶答，系統自動判定得分。</p>
+            </div>
+            <div className="flex items-center gap-2 text-yellow-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
+              {authLoading ? "連線中..." : "進入遊戲"} <ArrowLeft className="rotate-180" size={16} />
+            </div>
           </div>
-        ))}
+        </button>
+
+        {/* 你畫我猜 - Coming Soon */}
+        <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 flex flex-col justify-between min-h-[200px] opacity-50 cursor-not-allowed">
+          <div>
+            <div className="w-14 h-14 bg-slate-700 rounded-2xl flex items-center justify-center mb-4">
+              <Construction className="text-slate-500 w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-500 mb-2">你畫我猜</h2>
+            <p className="text-slate-600 text-sm">靈魂繪師大顯身手...</p>
+          </div>
+        </div>
       </main>
 
       <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">
