@@ -1699,10 +1699,10 @@ function EmojiResultView({ roomData, isHost, roomId }) {
     const teams = roomData.settings.teams || [];
     const scores = roomData.scores || {};
 
-    // 排序隊伍
+    // 排序隊伍並計算贏家
     const sortedTeams = [...teams].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
-    const winner = sortedTeams[0];
-    const isTie = sortedTeams.length > 1 && scores[sortedTeams[0].id] === scores[sortedTeams[1].id];
+    const maxScore = sortedTeams[0] ? (scores[sortedTeams[0].id] || 0) : 0;
+    const winners = sortedTeams.filter(t => (scores[t.id] || 0) === maxScore);
 
     // 重新開始
     const restartGame = async () => {
@@ -1720,48 +1720,48 @@ function EmojiResultView({ roomData, isHost, roomId }) {
     return (
         <div className="flex-1 p-4 md:p-8 flex items-center justify-center">
             <div className="max-w-2xl w-full text-center space-y-8">
-                {/* 慶祝動畫 */}
-                <div className="text-8xl animate-bounce">🎉</div>
+                {/* 獎盃動畫 */}
+                <div className="relative inline-block">
+                    <Trophy className="w-32 h-32 text-yellow-400 mx-auto drop-shadow-[0_0_30px_rgba(250,204,21,0.5)] animate-bounce" />
+                    <div className="absolute -top-4 -right-4 text-6xl">🎉</div>
+                    <div className="absolute -bottom-2 -left-4 text-6xl">✨</div>
+                </div>
 
-                <h1 className="text-4xl md:text-5xl font-bold text-white">遊戲結束！</h1>
-
-                {/* 勝利者 */}
-                {!isTie ? (
-                    <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 p-8 rounded-3xl border border-yellow-500/30">
-                        <div className="text-xl text-slate-300 mb-2">🏆 冠軍</div>
-                        <div className="text-5xl font-bold mb-2" style={{ color: winner.color }}>
-                            {winner.name}
-                        </div>
-                        <div className="text-3xl text-yellow-400 font-bold">
-                            {scores[winner.id] || 0} 分
-                        </div>
+                {/* 標題與冠軍 */}
+                <div>
+                    <h2 className="text-slate-400 font-bold uppercase tracking-widest mb-2">
+                        {winners.length > 1 ? "🤝 平手 (WINNERS)" : "🏆 冠軍 (WINNER)"}
+                    </h2>
+                    <h1 className="text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-orange-300 to-yellow-300 leading-tight">
+                        {winners.map(w => w.name).join(" & ")}
+                    </h1>
+                    <div className="text-2xl text-yellow-400 font-bold mt-2">
+                        {maxScore} 分
                     </div>
-                ) : (
-                    <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 p-8 rounded-3xl border border-purple-500/30">
-                        <div className="text-xl text-slate-300 mb-2">🤝 平手！</div>
-                        <div className="text-3xl text-purple-400 font-bold">
-                            {scores[winner.id] || 0} 分
-                        </div>
-                    </div>
-                )}
+                </div>
 
                 {/* 所有隊伍分數 */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {sortedTeams.map((team, idx) => (
-                        <div
-                            key={team.id}
-                            className={`p-4 rounded-xl border ${idx === 0 && !isTie ? 'border-yellow-400 bg-yellow-500/10' : 'border-slate-600 bg-slate-800'}`}
-                        >
-                            <div className="flex items-center justify-center gap-2 mb-2">
-                                {idx === 0 && !isTie && <Trophy size={16} className="text-yellow-400" />}
-                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: team.color }}></div>
-                                <span className="text-white font-medium">{team.name}</span>
+                    {sortedTeams.map((team) => {
+                        const isWinner = winners.some(w => w.id === team.id);
+                        return (
+                            <div
+                                key={team.id}
+                                className={`p-4 rounded-xl border transition-all ${isWinner
+                                    ? 'bg-yellow-900/40 border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.3)] scale-105'
+                                    : 'border-slate-600 bg-slate-800 opacity-80'}`}
+                            >
+                                <div className="flex items-center justify-center gap-2 mb-2">
+                                    {isWinner && <Trophy size={16} className="text-yellow-400" />}
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: team.color }}></div>
+                                    <span className="text-white font-medium">{team.name}</span>
+                                </div>
+                                <div className="text-3xl font-bold" style={{ color: team.color }}>
+                                    {scores[team.id] || 0}
+                                </div>
                             </div>
-                            <div className="text-3xl font-bold" style={{ color: team.color }}>
-                                {scores[team.id] || 0}
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {/* 操作按鈕 */}

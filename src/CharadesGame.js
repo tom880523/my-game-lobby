@@ -10,7 +10,7 @@ import {
     Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown,
     Eye, EyeOff, Pause, RotateCcw, Timer, Zap, Edit,
-    Cloud, Download, FileText, Library
+    Cloud, Download, FileText, Library, Sparkles
 } from 'lucide-react';
 
 // 引入共用 Firebase
@@ -711,8 +711,47 @@ function RoomView({ roomData, isHost, roomId, onStart, currentUser, isAdmin }) {
                     </div>
                 </div>
 
-                {/* 右側：題庫與設定 */}
+                {/* 右側：遊戲資訊、玩法與題庫設定 */}
                 <div className="space-y-6">
+                    {/* ✨ 遊戲資訊 */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                        <h2 className="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2">
+                            <Sparkles className="text-yellow-500" size={18} /> 遊戲資訊
+                        </h2>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div className="bg-slate-50 p-3 rounded-xl text-center">
+                                <div className="text-slate-500 mb-1">總輪數</div>
+                                <div className="font-bold text-indigo-600">{roomData.settings?.roundsPerTeam || 2} 輪</div>
+                            </div>
+                            <div className="bg-slate-50 p-3 rounded-xl text-center">
+                                <div className="text-slate-500 mb-1">單隊限時</div>
+                                <div className="font-bold text-indigo-600">{roomData.settings?.timePerRound || 180} 秒</div>
+                            </div>
+                            <div className="bg-slate-50 p-3 rounded-xl text-center">
+                                <div className="text-slate-500 mb-1">答對得分</div>
+                                <div className="font-bold text-green-600">+{roomData.settings?.pointsCorrect || 3} 分</div>
+                            </div>
+                            <div className="bg-slate-50 p-3 rounded-xl text-center">
+                                <div className="text-slate-500 mb-1">隊伍數量</div>
+                                <div className="font-bold text-indigo-600">{roomData.settings?.teams?.length || 2} 隊</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 🎮 遊戲玩法 */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                        <h2 className="text-lg font-bold mb-3 text-slate-800 flex items-center gap-2">
+                            🎮 遊戲玩法
+                        </h2>
+                        <ul className="text-sm text-slate-600 space-y-2">
+                            <li>• 每隊輪流派出一名表演者</li>
+                            <li>• 表演者僅能使用肢體語言，不可說話</li>
+                            <li>• 隊友需在限時內猜出題目</li>
+                            <li>• 答對得 {roomData.settings?.pointsCorrect || 3} 分，跳過扣 {roomData.settings?.pointsSkip || 1} 分</li>
+                        </ul>
+                    </div>
+
+                    {/* 題庫設定 */}
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <h2 className="text-lg font-bold mb-4 text-slate-800 flex justify-between items-center">
                             題庫設定
