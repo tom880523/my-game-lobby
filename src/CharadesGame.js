@@ -721,20 +721,23 @@ function RoomView({ roomData, isHost, roomId, onStart, currentUser, isAdmin }) {
                         <div className="grid grid-cols-2 gap-3 text-sm">
                             <div className="bg-slate-50 p-3 rounded-xl text-center">
                                 <div className="text-slate-500 mb-1">總輪數</div>
-                                <div className="font-bold text-indigo-600">{roomData.settings?.roundsPerTeam || 2} 輪</div>
+                                <div className="font-bold text-indigo-600">{roomData.settings?.totalRounds || 2} 輪</div>
                             </div>
                             <div className="bg-slate-50 p-3 rounded-xl text-center">
                                 <div className="text-slate-500 mb-1">單隊限時</div>
-                                <div className="font-bold text-indigo-600">{roomData.settings?.timePerRound || 180} 秒</div>
+                                <div className="font-bold text-indigo-600">{roomData.settings?.roundDuration || 600} 秒</div>
                             </div>
                             <div className="bg-slate-50 p-3 rounded-xl text-center">
                                 <div className="text-slate-500 mb-1">答對得分</div>
                                 <div className="font-bold text-green-600">+{roomData.settings?.pointsCorrect || 3} 分</div>
                             </div>
                             <div className="bg-slate-50 p-3 rounded-xl text-center">
-                                <div className="text-slate-500 mb-1">隊伍數量</div>
-                                <div className="font-bold text-indigo-600">{roomData.settings?.teams?.length || 2} 隊</div>
+                                <div className="text-slate-500 mb-1">跳過扣分</div>
+                                <div className="font-bold text-red-500">{roomData.settings?.pointsSkip || -1} 分</div>
                             </div>
+                        </div>
+                        <div className="mt-3 text-xs text-slate-400 text-center">
+                            隊伍數量：{roomData.settings?.teams?.length || 2} 隊
                         </div>
                     </div>
 
@@ -746,8 +749,9 @@ function RoomView({ roomData, isHost, roomId, onStart, currentUser, isAdmin }) {
                         <ul className="text-sm text-slate-600 space-y-2">
                             <li>• 每隊輪流派出一名表演者</li>
                             <li>• 表演者僅能使用肢體語言，不可說話</li>
-                            <li>• 隊友需在限時內猜出題目</li>
-                            <li>• 答對得 {roomData.settings?.pointsCorrect || 3} 分，跳過扣 {roomData.settings?.pointsSkip || 1} 分</li>
+                            <li>• 隊友需在 {roomData.settings?.answerTime || 30} 秒內猜出題目</li>
+                            <li>• 限時內其他隊伍可在 {roomData.settings?.stealTime || 10} 秒內搶答</li>
+                            <li>• 答對得 {roomData.settings?.pointsCorrect || 3} 分，跳過扣 {Math.abs(roomData.settings?.pointsSkip || 1)} 分</li>
                         </ul>
                     </div>
 
@@ -1324,9 +1328,11 @@ function SettingsModal({ localSettings, setLocalSettings, setShowSettings, onSav
                         <h4 className="text-sm font-bold text-slate-500 uppercase">遊戲數值</h4>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div className="space-y-1"><label className="text-slate-500 font-medium">總輪數</label><input type="number" className="w-full border p-2 rounded" value={localSettings.totalRounds} onChange={e => setLocalSettings({ ...localSettings, totalRounds: +e.target.value })} /></div>
-                            <div className="space-y-1"><label className="text-slate-500 font-medium">單隊限時</label><input type="number" className="w-full border p-2 rounded" value={localSettings.roundDuration} onChange={e => setLocalSettings({ ...localSettings, roundDuration: +e.target.value })} /></div>
+                            <div className="space-y-1"><label className="text-slate-500 font-medium">單隊限時 (秒)</label><input type="number" className="w-full border p-2 rounded" value={localSettings.roundDuration} onChange={e => setLocalSettings({ ...localSettings, roundDuration: +e.target.value })} /></div>
                             <div className="space-y-1"><label className="text-slate-500 font-medium">每題秒數</label><input type="number" className="w-full border p-2 rounded" value={localSettings.answerTime} onChange={e => setLocalSettings({ ...localSettings, answerTime: +e.target.value })} /></div>
                             <div className="space-y-1"><label className="text-slate-500 font-medium">搶答秒數</label><input type="number" className="w-full border p-2 rounded" value={localSettings.stealTime} onChange={e => setLocalSettings({ ...localSettings, stealTime: +e.target.value })} /></div>
+                            <div className="space-y-1"><label className="text-slate-500 font-medium">答對得分</label><input type="number" className="w-full border p-2 rounded" value={localSettings.pointsCorrect} onChange={e => setLocalSettings({ ...localSettings, pointsCorrect: +e.target.value })} /></div>
+                            <div className="space-y-1"><label className="text-slate-500 font-medium">跳過扣分</label><input type="number" className="w-full border p-2 rounded" value={localSettings.pointsSkip} onChange={e => setLocalSettings({ ...localSettings, pointsSkip: -Math.abs(+e.target.value) })} /><span className="text-xs text-slate-400">輸入正數，自動轉為負分</span></div>
                         </div>
                     </div>
                 </div>
