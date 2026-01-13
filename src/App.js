@@ -9,6 +9,7 @@ import {
 import { auth, db } from './firebase';
 import CharadesGame from './CharadesGame';
 import EmojiGame from './EmojiGame';
+import MemoryGame from './MemoryGame';
 
 export default function App() {
   return (
@@ -152,6 +153,18 @@ function MainApp() {
     );
   }
 
+  // ★★★ 記憶翻牌遊戲路由 ★★★
+  if (currentApp === 'memory') {
+    return (
+      <MemoryGame
+        onBack={() => setCurrentApp('home')}
+        getNow={getNow}
+        currentUser={user}
+        isAdmin={isAdmin}
+      />
+    );
+  }
+
   // --- 大廳介面 ---
   return (
     <GameLobby
@@ -241,6 +254,26 @@ function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, hand
           </div>
         </button>
 
+        {/* 記憶翻牌 - 可點擊 */}
+        <button
+          onClick={() => onSelectGame('memory')}
+          disabled={authLoading}
+          className={`group relative border rounded-2xl p-1 overflow-hidden transition-all duration-300 text-left shadow-xl ${authLoading ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700 hover:scale-105'}`}
+        >
+          <div className="h-full rounded-xl p-6 flex flex-col justify-between min-h-[200px]">
+            <div>
+              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-cyan-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
+                <span className="text-2xl">🃏</span>
+              </div>
+              <h2 className="text-2xl font-bold mb-2 text-white">記憶翻牌</h2>
+              <p className="text-slate-400 text-sm">翻牌配對！考驗記憶力，配對成功可繼續翻牌。</p>
+            </div>
+            <div className="flex items-center gap-2 text-emerald-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
+              {authLoading ? "連線中..." : "進入遊戲"} <ArrowLeft className="rotate-180" size={16} />
+            </div>
+          </div>
+        </button>
+
         {/* 你畫我猜 - Coming Soon */}
         <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 flex flex-col justify-between min-h-[200px] opacity-50 cursor-not-allowed">
           <div>
@@ -254,7 +287,7 @@ function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, hand
       </main>
 
       <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">
-        v7.1 Fix Timer & Props
+        v8.0 Add Memory Match Game
       </footer>
     </div>
   );
