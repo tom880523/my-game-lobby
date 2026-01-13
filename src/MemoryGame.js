@@ -9,7 +9,7 @@ import {
     Users, Play, Settings, Plus, Check, X,
     Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown,
-    Sparkles, PartyPopper, Library, Download, Cloud, LayoutGrid
+    Sparkles, PartyPopper, Library, Download, Cloud, LayoutGrid, Edit
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
@@ -407,6 +407,7 @@ function MemoryRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
     const [showAddDeck, setShowAddDeck] = useState(false);
     const [newDeckName, setNewDeckName] = useState('');
     const [newDeckPairs, setNewDeckPairs] = useState('');
+    const [editingDeck, setEditingDeck] = useState(null);
     const csvInputRef = useRef(null);
 
     const players = roomData.players || [];
@@ -620,269 +621,298 @@ function MemoryRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
     );
 
     return (
-        <div className="flex-1 p-4 md:p-8 text-white">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* 左側：隊伍與遊戲設定 */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* 遊戲資訊 */}
-                    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-                        <div className="flex flex-wrap gap-4 items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <LayoutGrid className="text-emerald-400" />
-                                    <span>網格：{gridRows}x{gridCols} ({totalPairs} 對)</span>
+        <>
+            <div className="flex-1 p-4 md:p-8 text-white">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* 左側：隊伍與遊戲設定 */}
+                    <div className="lg:col-span-2 space-y-6">
+                        {/* 遊戲資訊 */}
+                        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+                            <div className="flex flex-wrap gap-4 items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <LayoutGrid className="text-emerald-400" />
+                                        <span>網格：{gridRows}x{gridCols} ({totalPairs} 對)</span>
+                                    </div>
+                                    <div className="text-slate-400">|</div>
+                                    <div>可用題庫：{availablePairs} 對</div>
                                 </div>
-                                <div className="text-slate-400">|</div>
-                                <div>可用題庫：{availablePairs} 對</div>
+                                {roomData.settings.freeForAll && (
+                                    <span className="px-3 py-1 bg-purple-500/30 text-purple-300 rounded-full text-sm">個人賽模式</span>
+                                )}
                             </div>
-                            {roomData.settings.freeForAll && (
-                                <span className="px-3 py-1 bg-purple-500/30 text-purple-300 rounded-full text-sm">個人賽模式</span>
+                            {!isEvenGrid && (
+                                <div className="mt-3 p-3 bg-red-500/20 text-red-300 rounded-lg text-sm">
+                                    ⚠️ 網格總數 ({totalCards}) 必須是偶數才能成對！
+                                </div>
                             )}
                         </div>
-                        {!isEvenGrid && (
-                            <div className="mt-3 p-3 bg-red-500/20 text-red-300 rounded-lg text-sm">
-                                ⚠️ 網格總數 ({totalCards}) 必須是偶數才能成對！
-                            </div>
-                        )}
-                    </div>
 
-                    {/* 隊伍區域 (非個人賽模式) */}
-                    {!roomData.settings.freeForAll && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {/* 未分配區 */}
-                            <div
-                                onDragOver={handleDragOver}
-                                onDrop={(e) => handleDrop(e, null)}
-                                className="bg-slate-800/50 border border-dashed border-slate-600 rounded-xl p-4 min-h-[150px]"
-                            >
-                                <h3 className="font-bold text-slate-400 mb-3">未分配</h3>
-                                <div className="space-y-2">
-                                    {unassigned.map(p => <PlayerItem key={p.id} p={p} showKick showPromote />)}
-                                </div>
-                            </div>
-
-                            {/* 各隊伍 */}
-                            {teams.map(team => (
+                        {/* 隊伍區域 (非個人賽模式) */}
+                        {!roomData.settings.freeForAll && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {/* 未分配區 */}
                                 <div
-                                    key={team.id}
                                     onDragOver={handleDragOver}
-                                    onDrop={(e) => handleDrop(e, team.id)}
-                                    className="border rounded-xl p-4 min-h-[150px]"
-                                    style={{ borderColor: team.color, backgroundColor: `${team.color}15` }}
+                                    onDrop={(e) => handleDrop(e, null)}
+                                    className="bg-slate-800/50 border border-dashed border-slate-600 rounded-xl p-4 min-h-[150px]"
                                 >
-                                    <div className="flex items-center justify-between mb-3">
-                                        {editingTeamName === team.id ? (
-                                            <input
-                                                autoFocus
-                                                defaultValue={team.name}
-                                                onBlur={(e) => updateTeamName(team.id, e.target.value)}
-                                                onKeyDown={(e) => e.key === 'Enter' && updateTeamName(team.id, e.target.value)}
-                                                className="bg-transparent border-b border-white/30 outline-none text-white font-bold"
-                                            />
-                                        ) : (
-                                            <h3 className="font-bold cursor-pointer hover:opacity-80" style={{ color: team.color }} onClick={() => isHost && setEditingTeamName(team.id)}>
-                                                {team.name}
-                                            </h3>
-                                        )}
-                                        {isHost && teams.length > 2 && (
-                                            <button onClick={() => removeTeam(team.id)} className="text-red-400 hover:bg-red-500/20 p-1 rounded"><X size={14} /></button>
-                                        )}
-                                    </div>
+                                    <h3 className="font-bold text-slate-400 mb-3">未分配</h3>
                                     <div className="space-y-2">
-                                        {allTeamPlayers(team.id).map(p => <PlayerItem key={p.id} p={p} showKick />)}
+                                        {unassigned.map(p => <PlayerItem key={p.id} p={p} showKick showPromote />)}
                                     </div>
                                 </div>
-                            ))}
 
-                            {/* 新增隊伍按鈕 */}
-                            {isHost && teams.length < 6 && (
-                                <button onClick={addTeam} className="border-2 border-dashed border-slate-600 rounded-xl p-4 min-h-[150px] flex items-center justify-center text-slate-500 hover:border-emerald-500 hover:text-emerald-400 transition-colors">
-                                    <Plus size={24} className="mr-2" /> 新增隊伍
+                                {/* 各隊伍 */}
+                                {teams.map(team => (
+                                    <div
+                                        key={team.id}
+                                        onDragOver={handleDragOver}
+                                        onDrop={(e) => handleDrop(e, team.id)}
+                                        className="border rounded-xl p-4 min-h-[150px]"
+                                        style={{ borderColor: team.color, backgroundColor: `${team.color}15` }}
+                                    >
+                                        <div className="flex items-center justify-between mb-3">
+                                            {editingTeamName === team.id ? (
+                                                <input
+                                                    autoFocus
+                                                    defaultValue={team.name}
+                                                    onBlur={(e) => updateTeamName(team.id, e.target.value)}
+                                                    onKeyDown={(e) => e.key === 'Enter' && updateTeamName(team.id, e.target.value)}
+                                                    className="bg-transparent border-b border-white/30 outline-none text-white font-bold"
+                                                />
+                                            ) : (
+                                                <h3 className="font-bold cursor-pointer hover:opacity-80" style={{ color: team.color }} onClick={() => isHost && setEditingTeamName(team.id)}>
+                                                    {team.name}
+                                                </h3>
+                                            )}
+                                            {isHost && teams.length > 2 && (
+                                                <button onClick={() => removeTeam(team.id)} className="text-red-400 hover:bg-red-500/20 p-1 rounded"><X size={14} /></button>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2">
+                                            {allTeamPlayers(team.id).map(p => <PlayerItem key={p.id} p={p} showKick />)}
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* 新增隊伍按鈕 */}
+                                {isHost && teams.length < 6 && (
+                                    <button onClick={addTeam} className="border-2 border-dashed border-slate-600 rounded-xl p-4 min-h-[150px] flex items-center justify-center text-slate-500 hover:border-emerald-500 hover:text-emerald-400 transition-colors">
+                                        <Plus size={24} className="mr-2" /> 新增隊伍
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* 個人賽模式：玩家列表 */}
+                        {roomData.settings.freeForAll && (
+                            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+                                <h3 className="font-bold text-emerald-400 mb-3">參賽玩家 ({players.length} 人)</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    {players.map(p => <PlayerItem key={p.id} p={p} showKick={isHost} />)}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 操作按鈕 */}
+                        {isHost && !roomData.settings.freeForAll && (
+                            <div className="flex gap-3 flex-wrap">
+                                <button onClick={randomize} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition">
+                                    <Shuffle size={16} /> 隨機分組
                                 </button>
-                            )}
-                        </div>
-                    )}
+                            </div>
+                        )}
 
-                    {/* 個人賽模式：玩家列表 */}
-                    {roomData.settings.freeForAll && (
+                        {/* 題庫設定 */}
                         <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-                            <h3 className="font-bold text-emerald-400 mb-3">參賽玩家 ({players.length} 人)</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                {players.map(p => <PlayerItem key={p.id} p={p} showKick={isHost} />)}
-                            </div>
-                        </div>
-                    )}
+                            <h3 className="font-bold text-emerald-400 mb-3 flex items-center gap-2">
+                                <Library size={18} /> 題庫設定
+                            </h3>
+                            <div className="space-y-3">
+                                <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-slate-700/50">
+                                    <input
+                                        type="checkbox"
+                                        checked={roomData.useDefaultEmojis !== false}
+                                        onChange={toggleDefaultEmojis}
+                                        disabled={!isHost}
+                                        className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-emerald-500"
+                                    />
+                                    <span>內建 Emoji 題庫 ({DEFAULT_EMOJI_PAIRS.length} 對)</span>
+                                </label>
 
-                    {/* 操作按鈕 */}
-                    {isHost && !roomData.settings.freeForAll && (
-                        <div className="flex gap-3 flex-wrap">
-                            <button onClick={randomize} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition">
-                                <Shuffle size={16} /> 隨機分組
-                            </button>
-                        </div>
-                    )}
-
-                    {/* 題庫設定 */}
-                    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-                        <h3 className="font-bold text-emerald-400 mb-3 flex items-center gap-2">
-                            <Library size={18} /> 題庫設定
-                        </h3>
-                        <div className="space-y-3">
-                            <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-slate-700/50">
-                                <input
-                                    type="checkbox"
-                                    checked={roomData.useDefaultEmojis !== false}
-                                    onChange={toggleDefaultEmojis}
-                                    disabled={!isHost}
-                                    className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-emerald-500"
-                                />
-                                <span>內建 Emoji 題庫 ({DEFAULT_EMOJI_PAIRS.length} 對)</span>
-                            </label>
-
-                            {customDecks.map(deck => (
-                                <div key={deck.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-700/30">
-                                    <div className="flex items-center gap-3">
-                                        <Cloud className="text-cyan-400" size={16} />
-                                        <span>{deck.name} ({deck.pairs?.length || 0} 對)</span>
+                                {customDecks.map(deck => (
+                                    <div key={deck.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-700/30">
+                                        <div className="flex items-center gap-3">
+                                            <Cloud className="text-cyan-400" size={16} />
+                                            <span>{deck.name} ({deck.pairs?.length || 0} 對)</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            {/* 編輯按鈕：主持人或有權限者可見 */}
+                                            {(isHost || roomData.settings.permissions?.allowPlayerAddDecks) && (
+                                                <button
+                                                    onClick={() => setEditingDeck(deck)}
+                                                    className="text-cyan-400 hover:bg-cyan-500/20 p-1 rounded"
+                                                    title="編輯題庫"
+                                                >
+                                                    <Edit size={14} />
+                                                </button>
+                                            )}
+                                            {/* 刪除按鈕：僅主持人 */}
+                                            {isHost && (
+                                                <button
+                                                    onClick={async () => {
+                                                        const newDecks = customDecks.filter(d => d.id !== deck.id);
+                                                        await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), { customDecks: newDecks });
+                                                    }}
+                                                    className="text-red-400 hover:bg-red-500/20 p-1 rounded"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                    {isHost && (
-                                        <button
-                                            onClick={async () => {
-                                                const newDecks = customDecks.filter(d => d.id !== deck.id);
-                                                await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), { customDecks: newDecks });
-                                            }}
-                                            className="text-red-400 hover:bg-red-500/20 p-1 rounded"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
+                                ))}
 
-                            {isHost && (
-                                <button
-                                    onClick={() => setShowCloudLibrary(true)}
-                                    className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 rounded-lg hover:bg-cyan-500/30 transition"
-                                >
-                                    <Download size={16} /> 從雲端匯入題庫
-                                </button>
+                                {isHost && (
+                                    <button
+                                        onClick={() => setShowCloudLibrary(true)}
+                                        className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 rounded-lg hover:bg-cyan-500/30 transition"
+                                    >
+                                        <Download size={16} /> 從雲端匯入題庫
+                                    </button>
+                                )}
+                            </div>
+
+                            {availablePairs < totalPairs && (
+                                <div className="mt-3 p-3 bg-red-500/20 text-red-300 rounded-lg text-sm">
+                                    ⚠️ 題庫不足！需要至少 {totalPairs} 對，目前只有 {availablePairs} 對。請減小網格或新增題庫。
+                                </div>
                             )}
                         </div>
 
-                        {availablePairs < totalPairs && (
-                            <div className="mt-3 p-3 bg-red-500/20 text-red-300 rounded-lg text-sm">
-                                ⚠️ 題庫不足！需要至少 {totalPairs} 對，目前只有 {availablePairs} 對。請減小網格或新增題庫。
-                            </div>
+                        {/* 開始遊戲 */}
+                        {isHost && (
+                            <button
+                                onClick={startGame}
+                                disabled={!canStart}
+                                className="w-full py-4 bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white rounded-xl font-bold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition transform hover:scale-[1.02]"
+                            >
+                                <Play className="inline mr-2" /> 開始遊戲
+                            </button>
+                        )}
+
+                        {/* 雲端題庫 Modal */}
+                        {showCloudLibrary && (
+                            <MemoryCloudLibraryModal
+                                onClose={() => setShowCloudLibrary(false)}
+                                onImport={importCloudDeck}
+                                currentUser={currentUser}
+                                isAdmin={isAdmin}
+                            />
                         )}
                     </div>
 
-                    {/* 開始遊戲 */}
-                    {isHost && (
-                        <button
-                            onClick={startGame}
-                            disabled={!canStart}
-                            className="w-full py-4 bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white rounded-xl font-bold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition transform hover:scale-[1.02]"
-                        >
-                            <Play className="inline mr-2" /> 開始遊戲
-                        </button>
-                    )}
-
-                    {/* 雲端題庫 Modal */}
-                    {showCloudLibrary && (
-                        <MemoryCloudLibraryModal
-                            onClose={() => setShowCloudLibrary(false)}
-                            onImport={importCloudDeck}
-                            currentUser={currentUser}
-                            isAdmin={isAdmin}
-                        />
-                    )}
-                </div>
-
-                {/* 右側：遊戲資訊與玩法面板 */}
-                <div className="space-y-6">
-                    {/* 📊 遊戲資訊 */}
-                    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-                        <h3 className="font-bold text-emerald-400 mb-3">📊 遊戲資訊</h3>
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between"><span className="text-slate-400">網格大小</span><span className="font-bold">{gridRows} x {gridCols}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-400">總卡片數</span><span className="font-bold">{totalCards} 張</span></div>
-                            <div className="flex justify-between"><span className="text-slate-400">需配對數</span><span className="font-bold">{totalPairs} 對</span></div>
-                            <div className="flex justify-between"><span className="text-slate-400">可用題庫</span><span className={`font-bold ${availablePairs >= totalPairs ? 'text-emerald-400' : 'text-red-400'}`}>{availablePairs} 對</span></div>
-                            <div className="flex justify-between"><span className="text-slate-400">配對得分</span><span className="font-bold">{roomData.settings.pointsPerMatch || 1} 分</span></div>
-                        </div>
-                    </div>
-
-                    {/* 📖 遊戲玩法 */}
-                    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-                        <h3 className="font-bold text-emerald-400 mb-3">📖 遊戲玩法</h3>
-                        <div className="text-slate-300 text-sm space-y-2">
-                            <p>1️⃣ 輪到你時，翻開兩張牌</p>
-                            <p>2️⃣ 若圖案相同，得分並繼續翻牌</p>
-                            <p>3️⃣ 若圖案不同，換下一隊</p>
-                            <p>4️⃣ 翻完後分數最高者獲勝！</p>
-                        </div>
-                    </div>
-
-                    {/* 新增自訂題庫 (主持人限定) */}
-                    {isHost && (
+                    {/* 右側：遊戲資訊與玩法面板 */}
+                    <div className="space-y-6">
+                        {/* 📊 遊戲資訊 */}
                         <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-                            <h3 className="font-bold text-cyan-400 mb-3"><Plus size={16} className="inline mr-1" />新增自訂題庫</h3>
-                            {!showAddDeck ? (
-                                <button onClick={() => setShowAddDeck(true)} className="w-full py-2 border-2 border-dashed border-slate-600 rounded-lg text-slate-400 hover:border-cyan-500 hover:text-cyan-400 transition">
-                                    + 新增 / CSV 匯入
-                                </button>
-                            ) : (
-                                <div className="space-y-3">
-                                    <input value={newDeckName} onChange={(e) => setNewDeckName(e.target.value)} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm" placeholder="題庫名稱" />
-                                    <textarea value={newDeckPairs} onChange={(e) => setNewDeckPairs(e.target.value)} className="w-full h-20 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm font-mono" placeholder="每行一組 (A|B 或 A)" />
-                                    <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={async (e) => {
-                                        const file = e.target.files?.[0]; if (!file) return;
-                                        setNewDeckPairs(await file.text()); setNewDeckName(file.name.replace('.csv', ''));
-                                    }} />
-                                    <div className="flex gap-2">
-                                        <button onClick={() => csvInputRef.current?.click()} className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm">匯入 CSV</button>
-                                        <button onClick={async () => {
-                                            if (!newDeckName.trim() || !newDeckPairs.trim()) return;
-                                            const pairs = newDeckPairs.split('\n').filter(l => l.trim()).map(l => l.split('|')[0].trim());
-                                            const newDeck = { id: generateId(), name: newDeckName, enabled: true, pairs };
-                                            await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), { customDecks: [...customDecks, newDeck] });
-                                            setNewDeckName(''); setNewDeckPairs(''); setShowAddDeck(false);
-                                        }} className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-sm font-bold">新增</button>
-                                    </div>
-                                    {/* Admin 限定：同步上傳至雲端 */}
-                                    {isAdmin && (
-                                        <button
-                                            onClick={async () => {
-                                                if (!newDeckName.trim() || !newDeckPairs.trim()) return alert("請填寫題庫名稱和內容");
+                            <h3 className="font-bold text-emerald-400 mb-3">📊 遊戲資訊</h3>
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between"><span className="text-slate-400">網格大小</span><span className="font-bold">{gridRows} x {gridCols}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-400">總卡片數</span><span className="font-bold">{totalCards} 張</span></div>
+                                <div className="flex justify-between"><span className="text-slate-400">需配對數</span><span className="font-bold">{totalPairs} 對</span></div>
+                                <div className="flex justify-between"><span className="text-slate-400">可用題庫</span><span className={`font-bold ${availablePairs >= totalPairs ? 'text-emerald-400' : 'text-red-400'}`}>{availablePairs} 對</span></div>
+                                <div className="flex justify-between"><span className="text-slate-400">配對得分</span><span className="font-bold">{roomData.settings.pointsPerMatch || 1} 分</span></div>
+                            </div>
+                        </div>
+
+                        {/* 📖 遊戲玩法 */}
+                        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+                            <h3 className="font-bold text-emerald-400 mb-3">📖 遊戲玩法</h3>
+                            <div className="text-slate-300 text-sm space-y-2">
+                                <p>1️⃣ 輪到你時，翻開兩張牌</p>
+                                <p>2️⃣ 若圖案相同，得分並繼續翻牌</p>
+                                <p>3️⃣ 若圖案不同，換下一隊</p>
+                                <p>4️⃣ 翻完後分數最高者獲勝！</p>
+                            </div>
+                        </div>
+
+                        {/* 新增自訂題庫 (主持人限定) */}
+                        {isHost && (
+                            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+                                <h3 className="font-bold text-cyan-400 mb-3"><Plus size={16} className="inline mr-1" />新增自訂題庫</h3>
+                                {!showAddDeck ? (
+                                    <button onClick={() => setShowAddDeck(true)} className="w-full py-2 border-2 border-dashed border-slate-600 rounded-lg text-slate-400 hover:border-cyan-500 hover:text-cyan-400 transition">
+                                        + 新增 / CSV 匯入
+                                    </button>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <input value={newDeckName} onChange={(e) => setNewDeckName(e.target.value)} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm" placeholder="題庫名稱" />
+                                        <textarea value={newDeckPairs} onChange={(e) => setNewDeckPairs(e.target.value)} className="w-full h-20 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm font-mono" placeholder="每行一組 (A|B 或 A)" />
+                                        <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={async (e) => {
+                                            const file = e.target.files?.[0]; if (!file) return;
+                                            setNewDeckPairs(await file.text()); setNewDeckName(file.name.replace('.csv', ''));
+                                        }} />
+                                        <div className="flex gap-2">
+                                            <button onClick={() => csvInputRef.current?.click()} className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm">匯入 CSV</button>
+                                            <button onClick={async () => {
+                                                if (!newDeckName.trim() || !newDeckPairs.trim()) return;
                                                 const pairs = newDeckPairs.split('\n').filter(l => l.trim()).map(l => l.split('|')[0].trim());
                                                 const newDeck = { id: generateId(), name: newDeckName, enabled: true, pairs };
-                                                // 同時更新本地房間
                                                 await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), { customDecks: [...customDecks, newDeck] });
-                                                // 上傳至雲端
-                                                await addDoc(collection(db, 'memory_cloud_decks'), {
-                                                    name: newDeckName,
-                                                    pairs: pairs,
-                                                    pairCount: pairs.length,
-                                                    authorId: currentUser?.uid || 'anon',
-                                                    authorName: currentUser?.displayName || '匿名',
-                                                    createdAt: serverTimestamp()
-                                                });
-                                                alert("已同步至雲端！");
                                                 setNewDeckName(''); setNewDeckPairs(''); setShowAddDeck(false);
-                                            }}
-                                            className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-sm font-bold"
-                                        >
-                                            ☁️ 新增並上傳至雲端
-                                        </button>
-                                    )}
-                                    <button onClick={() => { setShowAddDeck(false); setNewDeckName(''); setNewDeckPairs(''); }} className="w-full py-1 text-slate-400 text-sm">取消</button>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                            }} className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-sm font-bold">新增</button>
+                                        </div>
+                                        {/* Admin 限定：同步上傳至雲端 */}
+                                        {isAdmin && (
+                                            <button
+                                                onClick={async () => {
+                                                    if (!newDeckName.trim() || !newDeckPairs.trim()) return alert("請填寫題庫名稱和內容");
+                                                    const pairs = newDeckPairs.split('\n').filter(l => l.trim()).map(l => l.split('|')[0].trim());
+                                                    const newDeck = { id: generateId(), name: newDeckName, enabled: true, pairs };
+                                                    // 同時更新本地房間
+                                                    await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), { customDecks: [...customDecks, newDeck] });
+                                                    // 上傳至雲端
+                                                    await addDoc(collection(db, 'memory_cloud_decks'), {
+                                                        name: newDeckName,
+                                                        pairs: pairs,
+                                                        pairCount: pairs.length,
+                                                        authorId: currentUser?.uid || 'anon',
+                                                        authorName: currentUser?.displayName || '匿名',
+                                                        createdAt: serverTimestamp()
+                                                    });
+                                                    alert("已同步至雲端！");
+                                                    setNewDeckName(''); setNewDeckPairs(''); setShowAddDeck(false);
+                                                }}
+                                                className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-sm font-bold"
+                                            >
+                                                ☁️ 新增並上傳至雲端
+                                            </button>
+                                        )}
+                                        <button onClick={() => { setShowAddDeck(false); setNewDeckName(''); setNewDeckPairs(''); }} className="w-full py-1 text-slate-400 text-sm">取消</button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
+
+            {/* 題庫編輯 Modal */}
+            {editingDeck && (
+                <MemoryDeckEditorModal
+                    deck={editingDeck}
+                    customDecks={customDecks}
+                    roomId={roomId}
+                    isHost={isHost}
+                    isAdmin={isAdmin}
+                    currentUser={currentUser}
+                    onClose={() => setEditingDeck(null)}
+                    onUpdate={(updatedDeck) => setEditingDeck(updatedDeck)}
+                />
+            )}
+        </>
     );
 }
 
@@ -963,6 +993,173 @@ function MemoryCloudLibraryModal({ onClose, onImport, currentUser, isAdmin }) {
                                 ))}
                     </div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+// =================================================================
+// Deck Editor Modal
+// =================================================================
+function MemoryDeckEditorModal({ deck, customDecks, roomId, isHost, isAdmin, currentUser, onClose, onUpdate }) {
+    const [pairs, setPairs] = useState(deck.pairs || []);
+    const [newPairA, setNewPairA] = useState('');
+    const [newPairB, setNewPairB] = useState('');
+    const [csvText, setCsvText] = useState('');
+    const [showCsvImport, setShowCsvImport] = useState(false);
+
+    console.log('[MemoryDeckEditorModal] 開啟編輯:', deck.name, pairs.length, '對');
+
+    // 儲存到 Firestore
+    const saveDeck = async (updatedPairs) => {
+        console.log('[MemoryDeckEditorModal] 儲存題庫:', updatedPairs.length, '對');
+        const updatedDeck = { ...deck, pairs: updatedPairs };
+        const newCustomDecks = customDecks.map(d => d.id === deck.id ? updatedDeck : d);
+        await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), { customDecks: newCustomDecks });
+        setPairs(updatedPairs);
+        onUpdate(updatedDeck);
+    };
+
+    // 新增配對
+    const addPair = () => {
+        const a = newPairA.trim();
+        const b = newPairB.trim() || a;
+        if (!a) return;
+        console.log('[MemoryDeckEditorModal] 新增配對:', a, '|', b);
+        const newPairs = [...pairs, { id: generateId(), a, b }];
+        saveDeck(newPairs);
+        setNewPairA('');
+        setNewPairB('');
+    };
+
+    // 刪除配對
+    const deletePair = (pairId) => {
+        console.log('[MemoryDeckEditorModal] 刪除配對:', pairId);
+        const newPairs = pairs.filter(p => p.id !== pairId);
+        saveDeck(newPairs);
+    };
+
+    // CSV 匯入
+    const importCSV = () => {
+        const lines = csvText.split('\n').filter(l => l.trim());
+        const imported = lines.map(line => {
+            const parts = line.split(/[,|]/).map(s => s.trim());
+            return { id: generateId(), a: parts[0] || '', b: parts[1] || parts[0] || '' };
+        }).filter(p => p.a);
+        console.log('[MemoryDeckEditorModal] CSV 匯入:', imported.length, '對');
+        if (imported.length > 0) {
+            saveDeck([...pairs, ...imported]);
+            setCsvText('');
+            setShowCsvImport(false);
+        }
+    };
+
+    // Admin 上傳到雲端
+    const uploadToCloud = async () => {
+        console.log('[MemoryDeckEditorModal] 上傳至雲端:', deck.name);
+        await addDoc(collection(db, 'memory_cloud_decks'), {
+            name: deck.name,
+            pairs: pairs,
+            pairCount: pairs.length,
+            authorId: currentUser?.uid || 'anon',
+            authorName: currentUser?.displayName || '匿名',
+            createdAt: serverTimestamp()
+        });
+        alert('已上傳至雲端！');
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
+                {/* Header */}
+                <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                            <Edit className="text-cyan-400" size={20} />
+                            編輯題庫：{deck.name}
+                        </h2>
+                        <p className="text-slate-400 text-sm">目前 {pairs.length} 對</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* 新增配對 */}
+                <div className="p-4 border-b border-slate-700">
+                    <div className="flex gap-2">
+                        <input
+                            value={newPairA}
+                            onChange={(e) => setNewPairA(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addPair()}
+                            placeholder="配對 A (例如: 🍎)"
+                            className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-2xl text-center"
+                        />
+                        <input
+                            value={newPairB}
+                            onChange={(e) => setNewPairB(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addPair()}
+                            placeholder="配對 B (選填)"
+                            className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-2xl text-center"
+                        />
+                        <button onClick={addPair} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-bold">
+                            <Plus size={20} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* 配對列表 */}
+                <div className="flex-1 overflow-y-auto p-4">
+                    {pairs.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400">尚無配對，請新增題目</div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                            {pairs.map(pair => (
+                                <div key={pair.id} className="relative group p-3 bg-slate-700/50 rounded-lg border border-slate-600 text-center">
+                                    <div className="text-2xl">{pair.a}</div>
+                                    {pair.b && pair.b !== pair.a && <div className="text-sm text-slate-400">↔ {pair.b}</div>}
+                                    {(isHost || isAdmin) && (
+                                        <button
+                                            onClick={() => deletePair(pair.id)}
+                                            className="absolute -top-1 -right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* 工具列 */}
+                <div className="p-4 border-t border-slate-700 space-y-3">
+                    {showCsvImport ? (
+                        <div className="space-y-2">
+                            <textarea
+                                value={csvText}
+                                onChange={(e) => setCsvText(e.target.value)}
+                                placeholder="每行一組配對，用逗號或 | 分隔"
+                                className="w-full h-32 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white font-mono"
+                            />
+                            <div className="flex gap-2">
+                                <button onClick={importCSV} className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-bold">匯入</button>
+                                <button onClick={() => setShowCsvImport(false)} className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg">取消</button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex gap-2">
+                            <button onClick={() => setShowCsvImport(true)} className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-medium">
+                                📄 CSV 匯入
+                            </button>
+                            {isAdmin && (
+                                <button onClick={uploadToCloud} className="flex-1 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-lg font-medium">
+                                    ☁️ 上傳至雲端
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -1321,6 +1518,25 @@ function MemorySettingsModal({ localSettings, setLocalSettings, setShowSettings,
                             <div>
                                 <span className="text-white font-medium">個人賽模式</span>
                                 <div className="text-xs text-slate-400">每位玩家各自為陣</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    {/* 權限設定 */}
+                    <div className="border-t border-slate-700 pt-4">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={localSettings.permissions?.allowPlayerAddDecks || false}
+                                onChange={(e) => setLocalSettings(prev => ({
+                                    ...prev,
+                                    permissions: { ...prev.permissions, allowPlayerAddDecks: e.target.checked }
+                                }))}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-cyan-500"
+                            />
+                            <div>
+                                <span className="text-white font-medium">允許參賽者編輯題庫</span>
+                                <div className="text-xs text-slate-400">非主持人可新增/編輯題目</div>
                             </div>
                         </label>
                     </div>
