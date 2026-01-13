@@ -479,6 +479,22 @@ function MemoryRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
         const initialScores = {};
         finalTeams.forEach(t => initialScores[t.id] = 0);
 
+        // ★★★ 新增：建立 turnOrder 與 currentMemberIndices ★★★
+        const turnOrder = {};
+        const currentMemberIndices = {};
+
+        finalTeams.forEach(team => {
+            // 取得該隊所有成員 (使用更新後的 players)
+            const teamMembers = updatedPlayers.filter(p => p.team === team.id).map(p => p.id);
+            // 隨機打亂順序
+            const shuffledMembers = teamMembers.sort(() => Math.random() - 0.5);
+            turnOrder[team.id] = shuffledMembers;
+            currentMemberIndices[team.id] = 0;
+        });
+
+        console.log('[MemoryRoomView] turnOrder:', turnOrder);
+        console.log('[MemoryRoomView] currentMemberIndices:', currentMemberIndices);
+
         await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
             status: 'playing',
             cards: shuffledCards,
@@ -489,7 +505,10 @@ function MemoryRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
             scores: initialScores,
             'settings.teams': finalTeams,
             players: updatedPlayers,
-            lastAction: null
+            lastAction: null,
+            // ★ 新增欄位
+            turnOrder: turnOrder,
+            currentMemberIndices: currentMemberIndices
         });
     };
 
@@ -830,6 +849,32 @@ function MemoryRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
                                             setNewDeckName(''); setNewDeckPairs(''); setShowAddDeck(false);
                                         }} className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-sm font-bold">新增</button>
                                     </div>
+                                    {/* Admin 限定：同步上傳至雲端 */}
+                                    {isAdmin && (
+                                        <button
+                                            onClick={async () => {
+                                                if (!newDeckName.trim() || !newDeckPairs.trim()) return alert("請填寫題庫名稱和內容");
+                                                const pairs = newDeckPairs.split('\n').filter(l => l.trim()).map(l => l.split('|')[0].trim());
+                                                const newDeck = { id: generateId(), name: newDeckName, enabled: true, pairs };
+                                                // 同時更新本地房間
+                                                await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), { customDecks: [...customDecks, newDeck] });
+                                                // 上傳至雲端
+                                                await addDoc(collection(db, 'memory_cloud_decks'), {
+                                                    name: newDeckName,
+                                                    pairs: pairs,
+                                                    pairCount: pairs.length,
+                                                    authorId: currentUser?.uid || 'anon',
+                                                    authorName: currentUser?.displayName || '匿名',
+                                                    createdAt: serverTimestamp()
+                                                });
+                                                alert("已同步至雲端！");
+                                                setNewDeckName(''); setNewDeckPairs(''); setShowAddDeck(false);
+                                            }}
+                                            className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-sm font-bold"
+                                        >
+                                            ☁️ 新增並上傳至雲端
+                                        </button>
+                                    )}
                                     <button onClick={() => { setShowAddDeck(false); setNewDeckName(''); setNewDeckPairs(''); }} className="w-full py-1 text-slate-400 text-sm">取消</button>
                                 </div>
                             )}
@@ -929,11 +974,7 @@ function MemoryCloudLibraryModal({ onClose, onImport, currentUser, isAdmin }) {
 function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
     const [flippedIds, setFlippedIds] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [showMatch, setShowMatch] = useState(false);
-    const [showMismatch, setShowMismatch] = useState(false);
-
-    // Ref 記錄已處理的 action timestamp，避免重複觸發動畫
-    const lastActionProcessed = useRef(0);
+    // ★ 移除 showMatch/showMismatch state (簡化 UI)
 
     const cards = roomData.cards || [];
     const teams = roomData.settings.teams || [];
@@ -946,38 +987,29 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
     const totalPairs = roomData.totalPairs || 8;
     const isHost = roomData.hostId === currentUser.uid;
 
-    // 找出當前玩家的隊伍
+    // ★★★ 嚴格輪替檢查 ★★★
+    const turnOrder = roomData.turnOrder || {};
+    const currentMemberIndices = roomData.currentMemberIndices || {};
+    const currentTeamId = currentTeam?.id;
+    const teamTurnOrder = turnOrder[currentTeamId] || [];
+    const currentMemberIdx = currentMemberIndices[currentTeamId] || 0;
+    const currentPlayerId = teamTurnOrder[currentMemberIdx] || null;
+
+    // 雙重檢查：隊伍 + 個人
     const myTeam = roomData.players?.find(p => p.id === currentUser.uid)?.team;
-    const isMyTurn = currentTeam && myTeam === currentTeam.id;
+    const isMyTeamTurn = currentTeam && myTeam === currentTeamId;
+    const isMyPersonalTurn = currentPlayerId === currentUser.uid;
+    const isMyTurn = isMyTeamTurn && isMyPersonalTurn;
+
+    // 取得當前操作者的名稱
+    const currentPlayerName = roomData.players?.find(p => p.id === currentPlayerId)?.name || '---';
 
     // 監聽 flippedCards 變化
     useEffect(() => {
         setFlippedIds(roomData.flippedCards || []);
     }, [roomData.flippedCards]);
 
-    // 監聽 lastAction 進行動畫 (Timestamp 檢查機制)
-    useEffect(() => {
-        const action = roomData.lastAction;
-        // 防呆：如果沒有 action 或該 action 已經處理過，直接 return
-        if (!action || !action.timestamp || action.timestamp <= lastActionProcessed.current) {
-            return;
-        }
-
-        // 標記為已處理
-        lastActionProcessed.current = action.timestamp;
-        console.log('[MemoryGameInterface] 處理 action:', action.type, action.timestamp);
-
-        // 執行顯示邏輯
-        if (action.type === 'match') {
-            setShowMatch(true);
-            const timer = setTimeout(() => setShowMatch(false), 1000);
-            return () => clearTimeout(timer);
-        } else if (action.type === 'mismatch') {
-            setShowMismatch(true);
-            const timer = setTimeout(() => setShowMismatch(false), 1500);
-            return () => clearTimeout(timer);
-        }
-    }, [roomData.lastAction]);
+    // ★ 移除 lastAction useEffect (不再需要動畫)
 
     const handleCardClick = async (card) => {
         if (isProcessing) return;
@@ -1033,10 +1065,18 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
                     );
                     const nextTeamIndex = (currentTeamIndex + 1) % teams.length;
 
+                    // ★★★ 更新當前隊伍的 memberIndex (下次該隊輪到下一位) ★★★
+                    const updatedMemberIndices = { ...(roomData.currentMemberIndices || {}) };
+                    const currentTeamOrder = (roomData.turnOrder || {})[currentTeamId] || [];
+                    if (currentTeamOrder.length > 0) {
+                        updatedMemberIndices[currentTeamId] = ((updatedMemberIndices[currentTeamId] || 0) + 1) % currentTeamOrder.length;
+                    }
+
                     await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
                         cards: resetCards,
                         flippedCards: [],
                         currentTeamIndex: nextTeamIndex,
+                        currentMemberIndices: updatedMemberIndices,
                         lastAction: { type: 'mismatch', timestamp: getNow() }
                     });
                     setIsProcessing(false);
@@ -1054,7 +1094,8 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
                 <div className="flex items-center gap-4">
                     <div className="px-4 py-2 rounded-lg" style={{ backgroundColor: currentTeam?.color + '30', borderColor: currentTeam?.color, borderWidth: 2 }}>
                         <span className="font-bold" style={{ color: currentTeam?.color }}>{currentTeam?.name}</span>
-                        <span className="text-white/60 ml-2">的回合</span>
+                        <span className="text-white/60 ml-1">-</span>
+                        <span className="font-bold text-white ml-1">{currentPlayerName}</span>
                     </div>
                     {isMyTurn && <span className="px-3 py-1 bg-emerald-500/30 text-emerald-300 rounded-full text-sm animate-pulse">輪到你了！</span>}
                 </div>
@@ -1072,7 +1113,7 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
                         onClick={() => handleCardClick(card)}
                         disabled={card.isMatched || !isMyTurn || isProcessing}
                         className={`aspect-square rounded-xl flex items-center justify-center text-4xl md:text-5xl lg:text-6xl transition-all duration-300 transform
-                            ${card.isMatched ? 'opacity-20 scale-90 cursor-default' :
+                            ${card.isMatched ? 'opacity-0 invisible scale-75 cursor-default' :
                                 (card.isFlipped || flippedIds.includes(card.id)) ? 'bg-white/10 rotate-y-0' :
                                     'bg-gradient-to-br from-emerald-600 to-cyan-700 hover:from-emerald-500 hover:to-cyan-600 cursor-pointer hover:scale-105'}
                             ${!isMyTurn && !card.isFlipped && !card.isMatched ? 'opacity-70 cursor-not-allowed' : ''}
@@ -1105,18 +1146,7 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
                 ))}
             </div>
 
-            {/* 配對動畫 */}
-            {showMatch && (
-                <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-50">
-                    <div className="text-6xl animate-bounce">✅</div>
-                    <div className="absolute text-2xl text-emerald-400 font-bold mt-24 animate-pulse">繼續翻牌！</div>
-                </div>
-            )}
-            {showMismatch && (
-                <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-50">
-                    <div className="text-6xl animate-shake">❌</div>
-                </div>
-            )}
+            {/* ★ 已移除配對動畫 (Clean UI) */}
         </div>
     );
 }
