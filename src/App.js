@@ -11,10 +11,16 @@ import CharadesGame from './CharadesGame';
 import EmojiGame from './EmojiGame';
 import MemoryGame from './MemoryGame';
 
+// ★ Firebase 效能監控 ★
+import { MonitorProvider, PerformanceOverlay } from './FirebaseMonitor';
+
 export default function App() {
   return (
     <ErrorBoundary>
-      <MainApp />
+      <MonitorProvider>
+        <MainApp />
+        <PerformanceOverlay />
+      </MonitorProvider>
     </ErrorBoundary>
   );
 }

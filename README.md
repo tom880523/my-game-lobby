@@ -29,13 +29,15 @@ Game Lobby Modify By Antigravity/
 ├── src/
 │   ├── App.js               # 主應用程式 (遊戲大廳 + 路由切換)
 │   ├── CharadesGame.js      # 比手畫腳遊戲主元件
-│   ├── EmojiGame.js         # Emoji 猜成語遊戲主元件 [NEW]
+│   ├── EmojiGame.js         # Emoji 猜成語遊戲主元件
+│   ├── MemoryGame.js        # 記憶翻牌遊戲主元件
 │   ├── firebase.js          # Firebase 配置與初始化
+│   ├── FirebaseMonitor.js   # Firebase 效能監控工具 [NEW]
+│   ├── dbOperations.js      # 統一 Firebase 函式匯出 [NEW]
 │   ├── index.js             # React 應用程式入口
 │   ├── index.css            # 全域樣式 (Tailwind 引入)
 │   ├── words.js             # 比手畫腳題庫 (2000+ 題目)
 │   ├── emojiData.js         # Emoji 猜成語題庫 (80+ 題目)
-│   ├── MemoryGame.js        # 記憶翻牌遊戲主元件 [NEW]
 │   └── 題庫EX/              # CSV 格式題庫擴充檔
 │       ├── Food.csv
 │       ├── 動物與昆蟲.csv
@@ -45,6 +47,36 @@ Game Lobby Modify By Antigravity/
 ├── package.json             # 專案依賴配置
 └── tailwind.config.js       # Tailwind CSS 配置
 ```
+
+---
+
+## 📊 效能監控 (Firebase Monitor)
+
+本專案內建 Firebase 讀寫操作監控面板，協助開發者追蹤資料庫使用狀況。
+
+### 功能特色
+
+| 功能 | 說明 |
+|:----|:----|
+| **即時計數** | 顯示讀取 (Read) 與寫入 (Write) 次數 |
+| **操作日誌** | 記錄每次 Firebase 操作的詳細資訊 |
+| **歸零按鈕** | 隨時重置計數器 |
+| **快捷鍵** | `Ctrl + Shift + M` 切換顯示/隱藏 |
+
+### 使用方式
+
+1. 啟動開發伺服器後，畫面右下角會顯示浮動監控圖示
+2. 點擊圖示展開詳細面板
+3. 觀察遊戲過程中的讀寫次數變化
+4. 若發現異常頻繁寫入，檢查程式碼是否有不當的 `updateDoc` 呼叫
+
+### 計時器優化說明
+
+所有遊戲的計時器已使用 **目標時間戳 (Target Timestamp)** 模式：
+
+- **寫入**: 僅在倒數開始時寫入一次 `endTime`
+- **讀取**: 客戶端本地計算 `remaining = endTime - now`
+- **效果**: 60 秒倒數從 ~~60 次寫入~~ 降為 **1 次寫入**
 
 ---
 
@@ -164,9 +196,15 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v8.3 題庫編輯器升級
+**目前版本**: v9.0 效能監控升級
 
 ### 更新歷史
+
+#### v9.0 (2026-01-15)
+- ✅ **Firebase 效能監控面板**：即時追蹤讀/寫次數
+- ✅ 浮動 UI 面板（右下角），含歸零與操作日誌
+- ✅ 快捷鍵 `Ctrl+Shift+M` 切換顯示
+- ✅ 確認所有遊戲已使用時間戳模式（無每秒寫入）
 
 #### v8.3 (2026-01-14)
 - ✅ **題庫編輯器 Modal**：可視化編輯題目配對
