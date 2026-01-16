@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     doc, setDoc, getDoc, onSnapshot, updateDoc,
     runTransaction, deleteDoc, collection, addDoc, getDocs,
@@ -567,6 +567,7 @@ function EmojiCloudLibraryModal({ onClose, onImport, currentUser, isAdmin }) {
 // =================================================================
 function EmojiRoomView({ roomData, isHost, isAdmin, roomId, onStart, currentUser }) {
     const [editingTeamName, setEditingTeamName] = useState(null);
+    // eslint-disable-next-line no-unused-vars -- draggedPlayer is set but used in drag handlers via closure
     const [draggedPlayer, setDraggedPlayer] = useState(null);
     const [showCloudLibrary, setShowCloudLibrary] = useState(false);
     const [newCatName, setNewCatName] = useState('');
@@ -1303,10 +1304,10 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
     const isHost = roomData.hostId === currentUser.uid;
 
     // 安全的時間獲取
-    const getCurrentTime = () => {
+    const getCurrentTime = useCallback(() => {
         if (typeof getNow === 'function') return getNow();
         return Date.now();
-    };
+    }, [getNow]);
 
     // 找出當前玩家所屬隊伍
     const myTeam = roomData.players?.find(p => p.id === currentUser.uid)?.team;
@@ -1350,11 +1351,12 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- handleTimeout 用 useCallback 包覆，其他依賴會導致計時器異常重置
     }, [roomData.questionEndTime, roomData.gameState, currentIndex, showCorrect, showTimeout]);
 
     // 時間到處理 (僅主持人執行寫入)
     // ★ v8.2 優化：合併寫入 roundResult + 下一題資料，從 2 次寫入降為 1 次
-    const handleTimeout = async () => {
+    const handleTimeout = useCallback(async () => {
         if (showTimeout || showCorrect) return;
 
         console.log('[EmojiGameInterface] handleTimeout - 合併寫入優化');
@@ -1379,7 +1381,7 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
             questionEndTime: isLastQuestion ? null : newEndTime,
             status: isLastQuestion ? 'finished' : 'playing'
         });
-    };
+    }, [showTimeout, showCorrect, currentIndex, totalQuestions, getCurrentTime, timePerQuestion, roomId, currentQuestion, roomData.questions]);
 
     // 監聽 roundResult 進行全域同步顯示
     // ★ v8.2 優化：使用 timestamp 追蹤已處理的結果，本地 setTimeout 控制動畫
@@ -1419,6 +1421,7 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
                 setLastCorrectInfo(null);
             }, 2000);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- teams 變化不應觸發此 effect，只需監聽 roundResult
     }, [roomData.roundResult]);
 
 

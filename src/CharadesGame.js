@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     doc, setDoc, getDoc, onSnapshot, updateDoc,
     increment, runTransaction, serverTimestamp,
@@ -9,7 +9,7 @@ import {
     Users, Play, Settings, Plus, Check, X,
     Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown,
-    Eye, EyeOff, Pause, RotateCcw, Timer, Zap, Edit,
+    Eye, EyeOff, Pause, RotateCcw, Timer, Edit,
     Cloud, Download, FileText, Library, Sparkles
 } from 'lucide-react';
 
@@ -49,10 +49,10 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
     const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
 
     // ★★★ 安全的時間獲取函式 (如果 getNow 沒傳進來，自動降級使用 Date.now) ★★★
-    const getCurrentTime = () => {
+    const getCurrentTime = useCallback(() => {
         if (typeof getNow === 'function') return getNow();
         return Date.now();
-    };
+    }, [getNow]);
 
     // 遊戲標題設定
     useEffect(() => {
@@ -328,6 +328,7 @@ function RoomView({ roomData, isHost, roomId, onStart, currentUser, isAdmin }) {
     const [importCode, setImportCode] = useState("");
     const [showCloudLibrary, setShowCloudLibrary] = useState(false);
 
+    // eslint-disable-next-line no-unused-vars -- draggedPlayer is set and used in drag handlers via closure
     const [draggedPlayer, setDraggedPlayer] = useState(null);
 
     const players = roomData.players || [];
@@ -337,7 +338,6 @@ function RoomView({ roomData, isHost, roomId, onStart, currentUser, isAdmin }) {
     const teams = roomData.settings.teams || [];
     const customCategories = roomData.customCategories || [];
 
-    const canSwitchTeam = isHost || roomData.settings.permissions.allowPlayerTeamSwitch;
     const canAddWords = isHost || roomData.settings.permissions.allowPlayerAddWords;
 
     // ... (保留原本的 helper functions)

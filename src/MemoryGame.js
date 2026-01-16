@@ -6,10 +6,10 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
-    Users, Play, Settings, Plus, Check, X,
+    Play, Settings, Plus, X,
     Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown,
-    Sparkles, PartyPopper, Library, Download, Cloud, LayoutGrid, Edit
+    Library, Download, Cloud, LayoutGrid, Edit
 } from 'lucide-react';
 
 import { db, auth } from './firebase';

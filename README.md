@@ -196,9 +196,23 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v9.1 Firestore 成本優化
+**目前版本**: v9.2 ESLint 修正 for Vercel Deploy
 
 ### 更新歷史
+
+#### v9.2 (2026-01-17) - ESLint 修正 for Vercel Deploy
+- ✅ **CharadesGame.js 清理**：
+  - 移除未使用的 `Zap` import
+  - 移除未使用的 `canSwitchTeam` 變數
+  - `getCurrentTime` 改用 `useCallback` 包裝，修正 exhaustive-deps 警告
+  - 新增 `draggedPlayer` eslint-disable 註解 (用於拖拉操作 closure)
+- ✅ **EmojiGame.js 修正**：
+  - `getCurrentTime` 改用 `useCallback` 包裝
+  - `handleTimeout` 改用 `useCallback` 包裝，明確列出依賴
+  - 新增 eslint-disable 註解避免計時器無窮迴圈
+  - 新增 `draggedPlayer` eslint-disable 註解
+- ✅ **MemoryGame.js 清理**：
+  - 移除未使用的 `Users`, `Check`, `Sparkles`, `PartyPopper` lucide-react imports
 
 #### v9.1 (2026-01-17) - Firestore 成本優化
 - ✅ **EmojiGame 寫入合併**：每題從 2 次寫入降為 1 次（節省 50%）
