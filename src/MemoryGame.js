@@ -1178,11 +1178,9 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
     const scores = roomData.scores || {};
     const currentTeamIndex = roomData.currentTeamIndex || 0;
     const currentTeam = teams[currentTeamIndex];
-    const gridRows = roomData.settings.gridRows || 4;
     const gridCols = roomData.settings.gridCols || 4;
     const matchedPairs = roomData.matchedPairs || 0;
     const totalPairs = roomData.totalPairs || 8;
-    const isHost = roomData.hostId === currentUser.uid;
 
     // ★★★ 嚴格輪替檢查 ★★★
     const turnOrder = roomData.turnOrder || {};

@@ -929,6 +929,11 @@ function GameInterface({ roomData, isHost, roomId, previewAsPlayer, setPreviewAs
     const currentTeam = roomData.settings.teams.find(t => t.id === roomData.currentTeamId) || roomData.settings.teams[0];
     const teams = roomData.settings.teams;
 
+    const getCurrentTime = useCallback(() => {
+        if (typeof getNow === 'function') return getNow();
+        return Date.now();
+    }, [getNow]);
+
     // ★★★ 修正通知時間判定 ★★★
     useEffect(() => {
         if (roomData.lastEvent && roomData.lastEvent.timestamp !== lastEventRef.current) {
@@ -943,12 +948,7 @@ function GameInterface({ roomData, isHost, roomId, previewAsPlayer, setPreviewAs
                 return () => clearTimeout(timer);
             }
         }
-    }, [roomData.lastEvent]); // 移除 getNow 依賴，直接在內部調用
-
-    const getCurrentTime = () => {
-        if (typeof getNow === 'function') return getNow();
-        return Date.now();
-    };
+    }, [roomData.lastEvent, getCurrentTime]);
 
     useEffect(() => {
         const t = setInterval(() => {
@@ -973,6 +973,7 @@ function GameInterface({ roomData, isHost, roomId, previewAsPlayer, setPreviewAs
             }
         }, 100);
         return () => clearInterval(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- getCurrentTime 已用 useCallback，加入依賴會導致計時器異常重置
     }, [roomData]);
 
     const updateGame = (data) => updateDoc(doc(db, 'rooms', `room_${roomId}`), data);
