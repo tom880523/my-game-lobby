@@ -1209,7 +1209,11 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
     // ★ 移除 lastAction useEffect (不再需要動畫)
 
     const handleCardClick = async (card) => {
-        if (isProcessing) return;
+        // ★ v8.2 優化：嚴格鎖定，多重防護
+        if (isProcessing) {
+            console.log('[MemoryGameInterface] 鎖定中，忽略點擊');
+            return;
+        }
         if (card.isMatched) return;
         if (flippedIds.includes(card.id)) return;
         if (!isMyTurn) return;
@@ -1220,42 +1224,59 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
         const newFlippedIds = [...flippedIds, card.id];
         setFlippedIds(newFlippedIds);
 
-        // 更新 Firestore
-        const newCards = cards.map(c => c.id === card.id ? { ...c, isFlipped: true } : c);
-        await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
-            cards: newCards,
-            flippedCards: newFlippedIds
-        });
-
         // 如果翻了兩張牌
         if (newFlippedIds.length === 2) {
+            // ★ 立即鎖定，防止快速點擊
             setIsProcessing(true);
-            const [first, second] = newFlippedIds.map(id => cards.find(c => c.id === id));
+            const [firstId, secondId] = newFlippedIds;
+            const first = cards.find(c => c.id === firstId);
+            const second = cards.find(c => c.id === secondId);
 
             if (first && second && first.pairId === second.pairId) {
-                // 配對成功
-                console.log('[MemoryGameInterface] 配對成功！');
-                setTimeout(async () => {
-                    const matchedCards = cards.map(c =>
-                        newFlippedIds.includes(c.id) ? { ...c, isMatched: true, isFlipped: false } : c
-                    );
-                    const newScores = { ...scores };
-                    newScores[currentTeam.id] = (newScores[currentTeam.id] || 0) + (roomData.settings.pointsPerMatch || 1);
-                    const newMatchedPairs = matchedPairs + 1;
+                // ★★★ 配對成功：合併 Write 2 & Write 3 ★★★
+                console.log('[MemoryGameInterface] 配對成功！合併寫入優化');
 
-                    await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
-                        cards: matchedCards,
-                        flippedCards: [],
-                        scores: newScores,
-                        matchedPairs: newMatchedPairs,
-                        lastAction: { type: 'match', teamId: currentTeam.id, timestamp: getNow() },
-                        status: newMatchedPairs >= totalPairs ? 'finished' : 'playing'
-                    });
+                // 立即計算結算資料
+                const matchedCards = cards.map(c =>
+                    newFlippedIds.includes(c.id)
+                        ? { ...c, isFlipped: true, isMatched: true }
+                        : c
+                );
+                const newScores = { ...scores };
+                newScores[currentTeam.id] = (newScores[currentTeam.id] || 0) + (roomData.settings.pointsPerMatch || 1);
+                const newMatchedPairs = matchedPairs + 1;
+
+                // ★ 一次寫入：翻牌 + 結算（從 2 次寫入合併為 1 次）
+                await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
+                    cards: matchedCards,
+                    flippedCards: newFlippedIds, // 保留讓動畫顯示
+                    scores: newScores,
+                    matchedPairs: newMatchedPairs,
+                    lastAction: { type: 'match', teamId: currentTeam.id, timestamp: getNow() },
+                    status: newMatchedPairs >= totalPairs ? 'finished' : 'playing'
+                });
+
+                // 延遲清除 flippedCards（僅用於 UI 動畫）
+                setTimeout(async () => {
+                    try {
+                        await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
+                            flippedCards: []
+                        });
+                    } catch (e) { console.error('[MemoryGameInterface] 清除 flippedCards 失敗:', e); }
                     setIsProcessing(false);
                 }, 800);
             } else {
                 // 配對失敗
                 console.log('[MemoryGameInterface] 配對失敗');
+
+                // 先寫入翻第二張牌的狀態
+                const newCards = cards.map(c => c.id === card.id ? { ...c, isFlipped: true } : c);
+                await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
+                    cards: newCards,
+                    flippedCards: newFlippedIds
+                });
+
+                // 延遲後重置並換隊
                 setTimeout(async () => {
                     const resetCards = cards.map(c =>
                         newFlippedIds.includes(c.id) ? { ...c, isFlipped: false } : c
@@ -1279,6 +1300,13 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
                     setIsProcessing(false);
                 }, 1500);
             }
+        } else {
+            // 翻第一張牌
+            const newCards = cards.map(c => c.id === card.id ? { ...c, isFlipped: true } : c);
+            await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
+                cards: newCards,
+                flippedCards: newFlippedIds
+            });
         }
     };
 

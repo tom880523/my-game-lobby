@@ -196,9 +196,19 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v9.0 效能監控升級
+**目前版本**: v9.1 Firestore 成本優化
 
 ### 更新歷史
+
+#### v9.1 (2026-01-17) - Firestore 成本優化
+- ✅ **EmojiGame 寫入合併**：每題從 2 次寫入降為 1 次（節省 50%）
+  - `handleTimeout` 和 `submitAnswer` 合併寫入 `roundResult` + 下一題資料
+  - 移除清除 `roundResult` 的 setTimeout 寫入
+  - 使用 `timestamp` 追蹤已處理的結果，本地 setTimeout 控制動畫顯示
+- ✅ **MemoryGame 配對優化**：配對成功從 3 次寫入降為 2 次（節省 33%）
+  - 翻第二張牌時直接判斷配對，合併翻牌 + 結算寫入
+  - 加強 `isProcessing` 鎖定，防止快速點擊重複寫入
+- ✅ **Debug Log 增強**：新增詳細的合併寫入日誌
 
 #### v9.0 (2026-01-15)
 - ✅ **Firebase 效能監控面板**：即時追蹤讀/寫次數

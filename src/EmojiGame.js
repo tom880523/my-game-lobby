@@ -1291,6 +1291,8 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
     const [timeLeft, setTimeLeft] = useState(0);
     const inputRef = useRef(null);
     const timerRef = useRef(null);
+    // ★ v8.2 優化：追蹤已處理的 roundResult timestamp，防止重複處理
+    const processedResultRef = useRef(null);
 
     const currentQuestion = roomData.currentQuestion;
     const currentIndex = roomData.currentQuestionIndex;
@@ -1351,10 +1353,18 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
     }, [roomData.questionEndTime, roomData.gameState, currentIndex, showCorrect, showTimeout]);
 
     // 時間到處理 (僅主持人執行寫入)
+    // ★ v8.2 優化：合併寫入 roundResult + 下一題資料，從 2 次寫入降為 1 次
     const handleTimeout = async () => {
         if (showTimeout || showCorrect) return;
 
-        // 寫入 roundResult 讓所有 Client 同步顯示
+        console.log('[EmojiGameInterface] handleTimeout - 合併寫入優化');
+
+        // ★ 預先計算下一題資料
+        const nextIndex = currentIndex + 1;
+        const isLastQuestion = nextIndex >= totalQuestions;
+        const newEndTime = getCurrentTime() + (timePerQuestion * 1000);
+
+        // ★ 一次寫入：roundResult + 下一題資料（不再需要第二次寫入清除 roundResult）
         await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), {
             roundResult: {
                 type: 'timeout',
@@ -1362,33 +1372,33 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
                 answer: currentQuestion.answer,
                 showModal: true,
                 timestamp: getCurrentTime()
-            }
+            },
+            // ★ 同時寫入下一題資料
+            currentQuestionIndex: nextIndex,
+            currentQuestion: isLastQuestion ? null : roomData.questions[nextIndex],
+            questionEndTime: isLastQuestion ? null : newEndTime,
+            status: isLastQuestion ? 'finished' : 'playing'
         });
-
-        // 延遲後進入下一題
-        setTimeout(async () => {
-            const nextIndex = currentIndex + 1;
-            const isLastQuestion = nextIndex >= totalQuestions;
-            const newEndTime = getCurrentTime() + (timePerQuestion * 1000);
-
-            await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), {
-                currentQuestionIndex: nextIndex,
-                currentQuestion: isLastQuestion ? null : roomData.questions[nextIndex],
-                questionEndTime: isLastQuestion ? null : newEndTime,
-                roundResult: null, // 清除結果
-                status: isLastQuestion ? 'finished' : 'playing'
-            });
-        }, 2500);
     };
 
     // 監聽 roundResult 進行全域同步顯示
+    // ★ v8.2 優化：使用 timestamp 追蹤已處理的結果，本地 setTimeout 控制動畫
     useEffect(() => {
         const result = roomData.roundResult;
         if (!result || !result.showModal) return;
 
+        // ★ 防止重複處理同一個結果（使用 timestamp 作為唯一識別）
+        if (processedResultRef.current === result.timestamp) {
+            console.log('[EmojiGameInterface] roundResult 已處理，跳過:', result.timestamp);
+            return;
+        }
+        processedResultRef.current = result.timestamp;
+        console.log('[EmojiGameInterface] 處理新的 roundResult:', result.type, result.timestamp);
+
         if (result.type === 'timeout') {
             setTimeoutQuestion({ emojis: result.emojis, answer: result.answer });
             setShowTimeout(true);
+            // ★ 本地 setTimeout 控制動畫顯示時間（不再依賴 roundResult 被清除）
             setTimeout(() => {
                 setShowTimeout(false);
                 setTimeoutQuestion(null);
@@ -1403,6 +1413,7 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
                 answer: result.answer
             });
             setShowCorrect(true);
+            // ★ 本地 setTimeout 控制動畫顯示時間
             setTimeout(() => {
                 setShowCorrect(false);
                 setLastCorrectInfo(null);
@@ -1452,6 +1463,8 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
             const newEndTime = getCurrentTime() + (timePerQuestion * 1000);
 
             // 使用 roundResult 進行全域同步
+            // ★ v8.2 優化：一次寫入所有資料，不再需要清除 roundResult
+            console.log('[EmojiGameInterface] submitAnswer - 合併寫入優化');
             await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), {
                 scores: newScores,
                 roundResult: {
@@ -1468,15 +1481,7 @@ function EmojiGameInterface({ roomData, roomId, currentUser, getNow }) {
                 questionEndTime: isLastQuestion ? null : newEndTime,
                 status: isLastQuestion ? 'finished' : 'playing'
             });
-
-            // 延遲後清除 roundResult
-            setTimeout(async () => {
-                try {
-                    await updateDoc(doc(db, 'emoji_rooms', `emoji_room_${roomId}`), {
-                        roundResult: null
-                    });
-                } catch (e) { /* ignore */ }
-            }, 2100);
+            // ★ v8.2 優化：移除清除 roundResult 的 setTimeout（節省 1 次寫入）
         } else {
             // 答錯，顯示提示
             console.log('[EmojiGameInterface] 答錯了');
