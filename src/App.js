@@ -11,15 +11,15 @@ import CharadesGame from './CharadesGame';
 import EmojiGame from './EmojiGame';
 import MemoryGame from './MemoryGame';
 
-// ★ Firebase 效能監控 ★
-import { MonitorProvider, PerformanceOverlay } from './FirebaseMonitor';
+// ★ Firebase 效能監控 ★ (移除 PerformanceOverlay)
+import { MonitorProvider } from './FirebaseMonitor';
 
 export default function App() {
   return (
     <ErrorBoundary>
       <MonitorProvider>
         <MainApp />
-        <PerformanceOverlay />
+        {/* PerformanceOverlay 已移除 - 不再顯示右下角監控面板 */}
       </MonitorProvider>
     </ErrorBoundary>
   );

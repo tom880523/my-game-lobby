@@ -9,7 +9,7 @@ import {
     Play, Settings, Plus, X,
     Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown,
-    Library, Download, Cloud, LayoutGrid, Edit
+    Library, Download, Cloud, LayoutGrid, Edit, Check
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
@@ -603,6 +603,21 @@ function MemoryRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
         setShowCloudLibrary(false);
     };
 
+    // ★ 題庫啟用/停用切換 (僅主持人可操作)
+    const toggleDeck = async (deckId) => {
+        if (!isHost) return;
+        console.log('[MemoryRoomView] toggleDeck:', deckId);
+        const newDecks = customDecks.map(d => {
+            if (d.id === deckId) {
+                return { ...d, enabled: d.enabled === false ? true : false };
+            }
+            return d;
+        });
+        await updateDoc(doc(db, 'memory_rooms', `memory_room_${roomId}`), {
+            customDecks: newDecks
+        });
+    };
+
     const PlayerItem = ({ p, showKick, showPromote }) => (
         <div
             draggable={isHost}
@@ -744,8 +759,22 @@ function MemoryRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
                                 {customDecks.map(deck => (
                                     <div key={deck.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-700/30">
                                         <div className="flex items-center gap-3">
+                                            {/* ★ 題庫啟用/停用切換按鈕 */}
+                                            <button
+                                                onClick={() => toggleDeck(deck.id)}
+                                                disabled={!isHost}
+                                                className={`w-5 h-5 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${deck.enabled !== false
+                                                        ? 'bg-emerald-500 border-emerald-500'
+                                                        : 'border-slate-500 bg-transparent'
+                                                    } ${!isHost ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
+                                                title={deck.enabled !== false ? '已啟用 (點擊停用)' : '已停用 (點擊啟用)'}
+                                            >
+                                                {deck.enabled !== false && <Check size={14} className="text-white" />}
+                                            </button>
                                             <Cloud className="text-cyan-400" size={16} />
-                                            <span>{deck.name} ({deck.pairs?.length || 0} 對)</span>
+                                            <span className={deck.enabled === false ? 'text-slate-500 line-through' : ''}>
+                                                {deck.name} ({deck.pairs?.length || 0} 對)
+                                            </span>
                                         </div>
                                         <div className="flex items-center gap-1">
                                             {/* 編輯按鈕：主持人或有權限者可見 */}

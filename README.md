@@ -196,9 +196,17 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v9.2 ESLint 修正 for Vercel Deploy
+**目前版本**: v9.3 MemoryGame 題庫開關功能
 
 ### 更新歷史
+
+#### v9.3 (2026-01-17) - MemoryGame 題庫開關功能
+- ✅ **移除 PerformanceOverlay**：`App.js` 不再顯示右下角效能監控面板
+- ✅ **MemoryGame 題庫開關**：
+  - 新增 `toggleDeck` 函式，僅主持人可操作
+  - 題庫列表新增 ✅ 勾選切換按鈕 (綠/灰色)
+  - 停用的題庫顯示刪除線樣式
+  - 新增 `Check` lucide-react icon
 
 #### v9.2 (2026-01-17) - ESLint 修正 for Vercel Deploy
 - ✅ **CharadesGame.js 清理**：
