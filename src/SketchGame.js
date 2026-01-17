@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     doc, setDoc, getDoc, onSnapshot, updateDoc,
-    runTransaction, deleteDoc, collection, addDoc, getDocs,
-    query, orderBy, limit, serverTimestamp
+    runTransaction, deleteDoc
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
     Play, Settings, Plus, Check, X, Shuffle, ClipboardCopy, Trophy,
-    ArrowLeft, LogOut, Trash2, Crown, Palette, Eraser, RotateCcw,
-    Eye, EyeOff, Cloud, Download, FileText, Library, Edit
+    ArrowLeft, LogOut, Trash2, Crown, Palette, Eraser, RotateCcw, Edit
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
@@ -501,7 +499,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [brushColor, setBrushColor] = useState('#000000');
-    const [brushSize, setBrushSize] = useState(5);
+    // eslint-disable-next-line no-unused-vars
+    const [brushSize] = useState(5);
     const [isEraser, setIsEraser] = useState(false);
     const [guess, setGuess] = useState('');
     const [timeLeft, setTimeLeft] = useState(0);
@@ -510,7 +509,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
     const teams = roomData.settings.teams || [];
     const scores = roomData.scores || {};
-    const currentTeam = teams.find(t => t.id === roomData.currentTeamId);
+    // currentTeam removed - unused
     const isDrawer = roomData.currentDrawerId === currentUser.uid;
     const myTeam = roomData.players?.find(p => p.id === currentUser.uid)?.team;
     const isMyTeamDrawing = myTeam === roomData.currentTeamId;
@@ -810,7 +809,7 @@ function SketchResultView({ roomData, isHost, roomId }) {
     const teams = roomData.settings.teams || [];
     const scores = roomData.scores || {};
     const sortedTeams = [...teams].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
-    const winner = sortedTeams[0];
+    // winner removed - unused
 
     const playAgain = async () => {
         await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
