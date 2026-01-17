@@ -223,17 +223,6 @@ function SpyLobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, cr
                     <p className="text-white/60 text-sm mt-1">找出臥底！隱藏身份！</p>
                 </div>
 
-                {/* ★★★ 遊戲規則 (移到大廳) ★★★ */}
-                <div className="bg-black/20 border border-violet-500/30 rounded-xl p-4">
-                    <h3 className="font-bold mb-2 flex items-center gap-2 text-violet-300"><BookOpen size={16} /> 遊戲規則</h3>
-                    <ul className="text-xs text-white/70 space-y-1">
-                        <li>• 平民與臥底拿到<span className="text-violet-400">不同詞彙</span>，白板沒有詞彙</li>
-                        <li>• 每輪輪流描述，<span className="text-orange-400">不能說謊但要模糊</span></li>
-                        <li>• 描述完後<span className="text-red-400">投票處決</span>一人</li>
-                        <li>• 臥底撐到最後即獲勝！</li>
-                    </ul>
-                </div>
-
                 <div className="space-y-4">
                     <div>
                         <label className="text-xs text-white/70 ml-1">你的名字</label>
@@ -393,8 +382,20 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
                         </div>
                     </div>
 
-                    {/* 右側：題庫設定 (v2.0 Deck System) */}
+                    {/* 右側：遊戲規則 + 題庫設定 */}
                     <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl space-y-4">
+                        {/* ★★★ 遊戲規則 (移到房間內) ★★★ */}
+                        <div className="bg-black/20 border border-violet-500/30 rounded-xl p-4">
+                            <h3 className="font-bold mb-2 flex items-center gap-2 text-violet-300"><BookOpen size={16} /> 遊戲規則</h3>
+                            <ul className="text-xs text-white/70 space-y-1">
+                                <li>• 平民與臥底拿到<span className="text-violet-400">不同詞彙</span>，白板沒有詞彙</li>
+                                <li>• 每輪輪流描述，<span className="text-orange-400">不能說謊但要模糊</span></li>
+                                <li>• 描述完後<span className="text-red-400">投票處決</span>一人</li>
+                                <li>• PK 平手<span className="text-red-400">全員淘汰</span>（驟死）</li>
+                                <li>• 臥底撐到最後即獲勝！</li>
+                            </ul>
+                        </div>
+
                         <h2 className="text-lg font-bold flex justify-between items-center">題庫設定 {!isHost && <span className="text-xs font-normal text-slate-500">僅主持人可編輯</span>}</h2>
 
                         {/* 內建題庫 */}
@@ -539,12 +540,12 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
         const topPlayers = Object.keys(counts).filter(id => counts[id] === maxVotes);
 
         if (topPlayers.length > 1) {
-            // 平手，進入 PK
+            // 平手，進入 PK (不清除日誌)
+            console.log('[SpyGame] 投票平手，進入 PK:', topPlayers);
             await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
                 status: 'pk',
                 pkPlayers: topPlayers,
-                votes: {},
-                roundLogs: []
+                votes: {}
             });
         } else if (topPlayers.length === 1) {
             // 淘汰
@@ -555,7 +556,7 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
         }
     };
 
-    // PK 結算
+    // PK 結算 (v2.1 驟死機制)
     const settlePK = async () => {
         const counts = {};
         Object.values(votes).forEach(targetId => {
@@ -565,19 +566,72 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
         const maxVotes = Math.max(...Object.values(counts), 0);
         const topPlayers = Object.keys(counts).filter(id => counts[id] === maxVotes);
 
-        if (topPlayers.length > 1 || topPlayers.length === 0) {
-            // 再次平手或無人投票，該輪無人出局
-            await nextRound();
-        } else {
+        if (topPlayers.length > 1) {
+            // ★★★ 驟死機制：PK 平手全員淘汰 ★★★
+            console.log('[SpyGame] PK 驟死！淘汰玩家:', topPlayers);
+            await eliminateMultiplePlayers(topPlayers);
+        } else if (topPlayers.length === 1) {
             await eliminatePlayer(topPlayers[0]);
+        } else {
+            // 無人投票，進入下一輪
+            await nextRound();
         }
     };
 
-    // 淘汰玩家
+    // ★★★ 批量淘汰玩家 (驟死機制用) ★★★
+    const eliminateMultiplePlayers = async (playerIds) => {
+        const updatedPlayers = players.map(p =>
+            playerIds.includes(p.id) ? { ...p, status: 'out' } : p
+        );
+
+        // 檢查勝負
+        const aliveAfter = updatedPlayers.filter(p => p.status === 'alive');
+        const aliveUndercovers = aliveAfter.filter(p => p.role === 'undercover').length;
+        const aliveCivilians = aliveAfter.filter(p => p.role === 'civilian').length;
+        const aliveWhiteboards = aliveAfter.filter(p => p.role === 'whiteboard').length;
+
+        let winner = null;
+        if (aliveUndercovers === 0 && aliveWhiteboards === 0) {
+            winner = 'civilian'; // 平民獲勝
+        } else if (aliveUndercovers >= aliveCivilians + aliveWhiteboards) {
+            winner = 'undercover'; // 臥底獲勝
+        } else if (aliveAfter.length === 0) {
+            // 所有人都被淘汰，視為平民獲勝 (異常情況)
+            winner = 'civilian';
+        }
+
+        if (winner) {
+            console.log('[SpyGame] 遊戲結束，勝利者:', winner);
+            await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
+                players: updatedPlayers,
+                status: 'finished',
+                winner: winner
+            });
+        } else {
+            // 繼續下一輪 (保留日誌，新增分隔線)
+            const newTurnOrder = aliveAfter.map(p => p.id).sort(() => 0.5 - Math.random());
+            const eliminatedNames = playerIds.map(id => players.find(p => p.id === id)?.name).join('、');
+            const systemLog = { playerId: 'system', name: '系統', content: `⚔️ PK 驟死！${eliminatedNames} 被淘汰 — 第 ${roomData.currentRound + 1} 輪開始 —` };
+
+            await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
+                players: updatedPlayers,
+                status: 'description',
+                currentRound: roomData.currentRound + 1,
+                turnOrder: newTurnOrder,
+                currentTurnIndex: 0,
+                roundLogs: arrayUnion(systemLog),
+                votes: {},
+                pkPlayers: []
+            });
+        }
+    };
+
+    // 淘汰玩家 (保留日誌)
     const eliminatePlayer = async (playerId) => {
         const updatedPlayers = players.map(p =>
             p.id === playerId ? { ...p, status: 'out' } : p
         );
+        const eliminatedPlayer = players.find(p => p.id === playerId);
 
         // 檢查勝負
         const aliveAfter = updatedPlayers.filter(p => p.status === 'alive');
@@ -593,36 +647,41 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
         }
 
         if (winner) {
+            console.log('[SpyGame] 遊戲結束，勝利者:', winner);
             await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
                 players: updatedPlayers,
                 status: 'finished',
                 winner: winner
             });
         } else {
-            // 繼續下一輪
+            // 繼續下一輪 (保留日誌，新增分隔線)
             const newTurnOrder = aliveAfter.map(p => p.id).sort(() => 0.5 - Math.random());
+            const systemLog = { playerId: 'system', name: '系統', content: `💀 ${eliminatedPlayer?.name} 被淘汰 — 第 ${roomData.currentRound + 1} 輪開始 —` };
+
             await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
                 players: updatedPlayers,
                 status: 'description',
                 currentRound: roomData.currentRound + 1,
                 turnOrder: newTurnOrder,
                 currentTurnIndex: 0,
-                roundLogs: [],
+                roundLogs: arrayUnion(systemLog),
                 votes: {},
                 pkPlayers: []
             });
         }
     };
 
-    // 下一輪
+    // 下一輪 (保留日誌，新增分隔線)
     const nextRound = async () => {
         const newTurnOrder = alivePlayers.map(p => p.id).sort(() => 0.5 - Math.random());
+        const systemLog = { playerId: 'system', name: '系統', content: `— 第 ${roomData.currentRound + 1} 輪開始 —` };
+
         await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
             status: 'description',
             currentRound: roomData.currentRound + 1,
             turnOrder: newTurnOrder,
             currentTurnIndex: 0,
-            roundLogs: [],
+            roundLogs: arrayUnion(systemLog),
             votes: {},
             pkPlayers: []
         });
@@ -711,7 +770,7 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
                                 <div
                                     key={p.id}
                                     onClick={() => canClickThisPlayer && !isPKDisabled && selectCandidate(p.id)}
-                                    className={`p-3 rounded-xl border transition-all ${p.id === roomData.turnOrder[roomData.currentTurnIndex] ? 'bg-violet-500/30 border-violet-500 ring-2 ring-violet-400' :
+                                    className={`p-3 rounded-xl border transition-all ${p.id === roomData.turnOrder[roomData.currentTurnIndex] && roomData.status === 'description' ? 'bg-violet-500/30 border-violet-500 ring-2 ring-violet-400' :
                                         selectedCandidateId === p.id ? 'bg-red-500/30 border-red-500 ring-2 ring-red-400' :
                                             hasVotedInDb && myVoteInDb === p.id ? 'bg-orange-500/30 border-orange-500' :
                                                 isPKDisabled && isInVoting ? 'bg-slate-800 border-slate-700 opacity-40' :
