@@ -646,7 +646,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 }
             }
 
-            // Phase 3 結束 → 寫入過場畫面再換下一題
+            // Phase 3 結束 → 寫入過場畫面 (由主持人 useEffect 負責換題)
             if (roomData.phase === 3 && remaining <= 0 && !snapshotSentRef.current.phase3) {
                 snapshotSentRef.current.phase3 = true;
                 console.log('[SketchGame] Phase 3 結束, 無人答對');
@@ -659,8 +659,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         points: 0
                     }
                 });
-                // 3 秒後換下一題
-                setTimeout(() => nextRound(false), 3000);
+                // 由主持人 useEffect 負責換題，這裡不再呼叫 setTimeout
             }
         };
 
@@ -673,6 +672,17 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     useEffect(() => {
         snapshotSentRef.current = { phase1: false, phase2: false, phase3: false };
     }, [roomData.currentWord]);
+
+    // ★★★ 主持人專用：監聽 roundResult 並換題 ★★★
+    useEffect(() => {
+        if (!isHost || !roomData.roundResult) return;
+        console.log('[SketchGame] Host 監聽到 roundResult, 3 秒後換題');
+        const timer = setTimeout(() => {
+            nextRound(false);
+        }, 3000);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [roomData.roundResult, isHost]);
 
     // Canvas 繪圖 (含座標縮放修正)
     const startDraw = (e) => {
@@ -789,9 +799,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 }
             });
             setGuess('');
-
-            // 3 秒後換下一題 (由答對的人觸發)
-            setTimeout(() => nextRound(true, myTeam), 3000);
+            // 由主持人 useEffect 負責換題，這裡不再呼叫 setTimeout
         } else {
             setGuess('');
             // 錯誤提示
@@ -947,16 +955,24 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                     </div>
 
                     {!isDrawer && canSeeImage() && (
-                        <div className="flex gap-2">
-                            <input
-                                value={guess}
-                                onChange={e => setGuess(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && submitGuess()}
-                                className={`flex-1 bg-slate-700 border px-4 py-3 rounded-xl text-white transition-all ${showWrong ? 'border-red-500 animate-pulse bg-red-500/20' : 'border-slate-600'}`}
-                                placeholder="輸入答案..."
-                                disabled={!!roomData.roundResult}
-                            />
-                            <button onClick={submitGuess} disabled={!!roomData.roundResult} className="bg-pink-500 hover:bg-pink-600 disabled:opacity-50 px-6 rounded-xl font-bold">送出</button>
+                        <div className="space-y-2">
+                            <div className="flex gap-2">
+                                <input
+                                    value={guess}
+                                    onChange={e => setGuess(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && submitGuess()}
+                                    className={`flex-1 bg-slate-700 border px-4 py-3 rounded-xl text-white transition-all ${showWrong ? 'border-red-500 animate-pulse bg-red-500/20' : 'border-slate-600'}`}
+                                    placeholder="輸入答案..."
+                                    disabled={!!roomData.roundResult}
+                                />
+                                <button onClick={submitGuess} disabled={!!roomData.roundResult} className="bg-pink-500 hover:bg-pink-600 disabled:opacity-50 px-6 rounded-xl font-bold">送出</button>
+                            </div>
+                            {/* ★★★ 錯誤提示文字 ★★★ */}
+                            {showWrong && (
+                                <div className="text-red-500 font-bold text-sm animate-bounce flex items-center justify-center gap-1">
+                                    <X size={16} /> 答案不正確，請再試一次
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
