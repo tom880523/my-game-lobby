@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     doc, setDoc, getDoc, onSnapshot, updateDoc,
-    runTransaction, deleteDoc
+    runTransaction, deleteDoc, collection, addDoc, getDocs,
+    query, orderBy, limit, serverTimestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
     Play, Settings, Plus, Check, X, Shuffle, ClipboardCopy, Trophy,
-    ArrowLeft, LogOut, Trash2, Crown, Palette, Eraser, RotateCcw, Edit
+    ArrowLeft, LogOut, Trash2, Crown, Palette, Eraser, RotateCcw, Edit,
+    Cloud, Download, Library
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
@@ -16,9 +18,9 @@ import { DEFAULT_WORDS_LARGE } from './words';
 // 預設設定
 // =================================================================
 const DEFAULT_SETTINGS = {
-    phase1Time: 10,
-    phase2Time: 10,
-    phase3Time: 10,  // NEW: 全員搶答時間
+    phase1Time: 20,
+    phase2Time: 20,
+    phase3Time: 20,  // 全員搶答時間
     totalRounds: 5,
     pointsPhase1: 3,  // 隊友猜對 (Phase 2)
     pointsPhase2: 1,  // 全員搶答 (Phase 3)
@@ -244,6 +246,7 @@ function SketchRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
     const [newCatName, setNewCatName] = useState("");
     const [editingCategory, setEditingCategory] = useState(null);
     const [newWordInput, setNewWordInput] = useState("");
+    const [showCloudLibrary, setShowCloudLibrary] = useState(false);
 
     const players = roomData.players || [];
     const teams = roomData.settings.teams || [];
@@ -322,6 +325,56 @@ function SketchRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
         setEditingCategory(null);
     };
 
+    // ★★★ 雲端題庫上傳 (僅 Admin) ★★★
+    const saveDeckToCloud = async () => {
+        if (!editingCategory) return;
+        if (!isAdmin) return alert("權限不足：您必須是管理員才能上傳題庫到雲端！");
+        try {
+            const q = query(collection(db, 'public_decks'), orderBy('createdAt', 'desc'), limit(100));
+            const snapshot = await getDocs(q);
+            const existing = snapshot.docs.find(d => d.data().name === editingCategory.name);
+
+            if (existing) {
+                if (!window.confirm(`雲端已存在同名題庫「${editingCategory.name}」，確定要覆蓋嗎？`)) return;
+                await updateDoc(doc(db, 'public_decks', existing.id), {
+                    words: editingCategory.words,
+                    updatedAt: serverTimestamp(),
+                    creatorId: currentUser.uid
+                });
+                alert(`題庫「${editingCategory.name}」已更新！`);
+            } else {
+                const docRef = await addDoc(collection(db, 'public_decks'), {
+                    name: editingCategory.name,
+                    words: editingCategory.words,
+                    createdAt: serverTimestamp(),
+                    creatorId: currentUser.uid,
+                    creatorEmail: currentUser.email
+                });
+                alert(`題庫已上傳！代碼：${docRef.id}`);
+            }
+        } catch (e) {
+            alert("上傳失敗：" + e.message);
+        }
+    };
+
+    // ★★★ 從雲端下載題庫 ★★★
+    const importDeckFromCloud = async (deckId) => {
+        try {
+            const deckDoc = await getDoc(doc(db, 'public_decks', deckId));
+            if (deckDoc.exists()) {
+                const deck = deckDoc.data();
+                const newCat = { id: generateId(), name: deck.name, words: deck.words || [], enabled: true };
+                await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), { customCategories: [...customCategories, newCat] });
+                alert(`成功匯入：${deck.name} (${deck.words?.length} 題)`);
+                setShowCloudLibrary(false);
+            } else {
+                alert("找不到此代碼的題庫");
+            }
+        } catch (e) {
+            alert("匯入失敗：" + e.message);
+        }
+    };
+
     const startGame = async () => {
         let finalWords = [];
         if (roomData.useDefaultCategory !== false) finalWords = [...DEFAULT_WORDS_LARGE];
@@ -391,12 +444,29 @@ function SketchRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
                                 ))}
                                 {editingCategory.words.length === 0 && <div className="text-center text-slate-500 py-4">還沒有題目</div>}
                             </div>
+                            {/* ★★★ 上傳雲端 (僅 Admin) ★★★ */}
+                            {isAdmin && (
+                                <button onClick={saveDeckToCloud} className="w-full bg-sky-600 hover:bg-sky-700 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2">
+                                    <Cloud size={16} /> 上傳至雲端 (管理員)
+                                </button>
+                            )}
                             <div className="pt-2 border-t border-slate-700 flex justify-between">
                                 {isHost ? <button onClick={deleteCategory} className="text-red-400 text-sm flex items-center gap-1"><Trash2 size={14} /> 刪除</button> : <div></div>}
                                 <button onClick={() => setEditingCategory(null)} className="bg-slate-700 text-white px-6 py-2 rounded-lg text-sm font-bold">完成</button>
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* ★★★ 雲端題庫圖書館 Modal ★★★ */}
+                {showCloudLibrary && (
+                    <SketchCloudLibraryModal
+                        onClose={() => setShowCloudLibrary(false)}
+                        onImport={importDeckFromCloud}
+                        db={db}
+                        currentUser={currentUser}
+                        isAdmin={isAdmin}
+                    />
                 )}
 
                 <div className="grid md:grid-cols-2 gap-6">
@@ -477,6 +547,13 @@ function SketchRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
                                     <input value={newCatName} onChange={e => setNewCatName(e.target.value)} className="flex-1 bg-slate-700 border border-slate-600 px-3 py-2 rounded-lg text-sm text-white" placeholder="新題庫名稱..." onKeyDown={e => e.key === 'Enter' && addCategory()} />
                                     <button onClick={addCategory} className="bg-pink-500 text-white px-4 rounded-lg font-bold"><Plus size={18} /></button>
                                 </div>
+                            )}
+
+                            {/* ★★★ 雲端圖書館按鈕 ★★★ */}
+                            {isHost && (
+                                <button onClick={() => setShowCloudLibrary(true)} className="w-full mt-4 bg-gradient-to-r from-sky-500 to-indigo-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition">
+                                    <Library size={18} /> ☁️ 瀏覽雲端題庫圖書館
+                                </button>
                             )}
                         </div>
                     </div>
@@ -907,6 +984,94 @@ function SketchSettingsModal({ localSettings, setLocalSettings, setShowSettings,
                 <div className="flex gap-3 pt-4 border-t border-slate-700">
                     <button onClick={() => setShowSettings(false)} className="flex-1 py-3 bg-slate-700 text-white rounded-lg font-bold">取消</button>
                     <button onClick={onSave} className="flex-1 py-3 bg-pink-500 text-white rounded-lg font-bold">儲存</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// =================================================================
+// Cloud Library Modal
+// =================================================================
+function SketchCloudLibraryModal({ onClose, onImport, db, currentUser, isAdmin }) {
+    const [decks, setDecks] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchDecks = async () => {
+            try {
+                const q = query(collection(db, 'public_decks'), orderBy('createdAt', 'desc'), limit(20));
+                const snapshot = await getDocs(q);
+                const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setDecks(list);
+                console.log('[SketchGame] 載入雲端題庫:', list.length, '個');
+            } catch (e) {
+                console.error("Fetch decks error:", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDecks();
+    }, [db]);
+
+    const deleteDeck = async (deckId) => {
+        if (!isAdmin) return alert("權限不足：只有管理員可以刪除雲端題庫！");
+        if (!window.confirm("確定要從雲端永久刪除此題庫嗎？")) return;
+        try {
+            await deleteDoc(doc(db, 'public_decks', deckId));
+            setDecks(decks.filter(d => d.id !== deckId));
+        } catch (e) {
+            alert("刪除失敗");
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-800 w-full max-w-2xl rounded-2xl p-6 shadow-2xl flex flex-col max-h-[80vh] border border-slate-700">
+                <div className="flex justify-between items-center border-b border-slate-700 pb-4 mb-4">
+                    <h3 className="font-bold text-2xl flex items-center gap-2 text-white">
+                        <Cloud className="text-sky-400" /> 雲端題庫圖書館
+                    </h3>
+                    <button onClick={onClose}><X className="text-slate-400 hover:text-white" /></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                    {loading ? (
+                        <div className="text-center py-10 text-slate-400">載入中...</div>
+                    ) : decks.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400">目前沒有公開題庫</div>
+                    ) : (
+                        decks.map(deck => (
+                            <div key={deck.id} className="bg-slate-700 border border-slate-600 rounded-xl p-4 flex justify-between items-center hover:border-slate-500 transition">
+                                <div>
+                                    <h4 className="font-bold text-lg text-white">{deck.name}</h4>
+                                    <div className="text-sm text-slate-400 flex gap-3">
+                                        <span>題目數: {deck.words?.length || 0}</span>
+                                        <span className="font-mono bg-slate-600 px-1 rounded text-xs">ID: {deck.id.slice(0, 6)}...</span>
+                                    </div>
+                                    <div className="text-xs text-slate-500 mt-1">上傳者: {deck.creatorEmail || "未知"}</div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => onImport(deck.id)}
+                                        className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1"
+                                    >
+                                        <Download size={16} /> 下載
+                                    </button>
+
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => deleteDeck(deck.id)}
+                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/20 rounded-lg transition"
+                                            title="刪除 (管理員專用)"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         </div>
