@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc, addDoc, collection, serverTimestamp, onSnapshot, deleteDoc } from 'firebase/firestore'; // 補上缺少的引用
 import {
-  Users, Gamepad2, ArrowLeft, LogIn, Construction
+  Users, Gamepad2, ArrowLeft, LogIn, Palette
 } from 'lucide-react';
 
 // 引用我們拆分出去的檔案
@@ -10,6 +10,7 @@ import { auth, db } from './firebase';
 import CharadesGame from './CharadesGame';
 import EmojiGame from './EmojiGame';
 import MemoryGame from './MemoryGame';
+import SketchGame from './SketchGame';
 
 // ★ Firebase 效能監控 ★ (移除 PerformanceOverlay)
 import { MonitorProvider } from './FirebaseMonitor';
@@ -170,6 +171,17 @@ function MainApp() {
       />
     );
   }
+  // ★★★ 靈魂畫手遊戲路由 ★★★
+  if (currentApp === 'sketch') {
+    return (
+      <SketchGame
+        onBack={() => setCurrentApp('home')}
+        getNow={getNow}
+        currentUser={user}
+        isAdmin={isAdmin}
+      />
+    );
+  }
 
   // --- 大廳介面 ---
   return (
@@ -280,20 +292,29 @@ function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, hand
           </div>
         </button>
 
-        {/* 你畫我猜 - Coming Soon */}
-        <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 flex flex-col justify-between min-h-[200px] opacity-50 cursor-not-allowed">
-          <div>
-            <div className="w-14 h-14 bg-slate-700 rounded-2xl flex items-center justify-center mb-4">
-              <Construction className="text-slate-500 w-8 h-8" />
+        {/* 靈魂畫手 - 可點擊 */}
+        <button
+          onClick={() => onSelectGame('sketch')}
+          disabled={authLoading}
+          className={`group relative border rounded-2xl p-1 overflow-hidden transition-all duration-300 text-left shadow-xl ${authLoading ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700 hover:scale-105'}`}
+        >
+          <div className="h-full rounded-xl p-6 flex flex-col justify-between min-h-[200px]">
+            <div>
+              <div className="w-14 h-14 bg-gradient-to-br from-pink-500 to-fuchsia-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
+                <Palette className="text-white w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2 text-white">靈魂畫手</h2>
+              <p className="text-slate-400 text-sm">畫圖猜題！隊友專屬暗號，敵隊伺機搶答。</p>
             </div>
-            <h2 className="text-xl font-bold text-slate-500 mb-2">你畫我猜</h2>
-            <p className="text-slate-600 text-sm">靈魂繪師大顯身手...</p>
+            <div className="flex items-center gap-2 text-pink-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
+              {authLoading ? "連線中..." : "進入遊戲"} <ArrowLeft className="rotate-180" size={16} />
+            </div>
           </div>
-        </div>
+        </button>
       </main>
 
       <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">
-        v8.0 Add Memory Match Game
+        v10.0 Add Soul Painter Game
       </footer>
     </div>
   );

@@ -132,9 +132,17 @@ Game Lobby Modify By Antigravity/
 | **Bonus Turn** | 配對成功可繼續翻牌                          |
 | **即時同步**   | 所有玩家即時看到翻牌結果                    |
 
-### 5. 開發中遊戲
+### 5. 靈魂畫手 (Soul Painter) [NEW]
 
-- 你畫我猜 (Coming Soon)
+畫圖猜題的經典遊戲，採用「兩段式快照」機制優化 Firebase 寫入成本：
+
+| 功能           | 說明                                      |
+|:--------------|:-----------------------------------------|
+| **房間系統**   | 建立/加入房間、房主權限管理                  |
+| **隱伍機制**   | Phase 1 (10秒) 僅隊友可見、Phase 2 全員可見   |
+| **Canvas 畫布** | 畫筆顏色、橡皮擦、一鍵清除                    |
+| **得分設定**   | Phase 1 答對 3 分 / Phase 2 答對 1 分       |
+| **題庫系統**   | 共用 Charades 題庫、支援自訂                 |
 
 ---
 
@@ -189,16 +197,27 @@ npm run build
 | `time_sync`         | 時間同步用暫存文件       |
 | `cloud_decks`       | 比手畫腳雲端共享題庫      |
 | `emoji_cloud_decks` | Emoji 雲端共享題庫         |
-| `memory_rooms`      | 記憶翻牌遊戲房間資料 [NEW]  |
-| `memory_cloud_decks`| 記憶翻牌雲端共享題庫 [NEW]  |
+| `memory_rooms`      | 記憶翻牌遊戲房間資料      |
+| `memory_cloud_decks`| 記憶翻牌雲端共享題庫      |
+| `sketch_rooms`      | 靈魂畫手遊戲房間資料 [NEW] |
 
 ---
 
 ## 📝 版本資訊
 
-**目前版本**: v9.3 MemoryGame 題庫開關功能
+**目前版本**: v10.0 Soul Painter (靈魂畫手)
 
 ### 更新歷史
+
+#### v10.0 (2026-01-17) - Soul Painter (靈魂畫手)
+- ✅ **全新遊戲**：靈魂畫手 - 畫圖猜題
+- ✅ **兩段式快照機制**：
+  - Phase 1: 10 秒內僅隊友可見
+  - Phase 2: 10 秒後全員可觋搶答
+- ✅ **Canvas 畫布**：畫筆顏色 (5 色)、橡皮擦、清除
+- ✅ **得分機制**：Phase 1 答對 +3 分 / Phase 2 +1 分
+- ✅ **Firebase 成本優化**：絕不即時同步筆劃，僅傳送快照
+- ✅ **共用題庫**：直接使用 Charades 的 1000+ 題庫
 
 #### v9.3 (2026-01-17) - MemoryGame 題庫開關功能
 - ✅ **移除 PerformanceOverlay**：`App.js` 不再顯示右下角效能監控面板
