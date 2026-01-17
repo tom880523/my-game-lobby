@@ -18,9 +18,10 @@ import { DEFAULT_WORDS_LARGE } from './words';
 const DEFAULT_SETTINGS = {
     phase1Time: 10,
     phase2Time: 10,
+    phase3Time: 10,  // NEW: 全員搶答時間
     totalRounds: 5,
-    pointsPhase1: 3,
-    pointsPhase2: 1,
+    pointsPhase1: 3,  // 隊友猜對 (Phase 2)
+    pointsPhase2: 1,  // 全員搶答 (Phase 3)
     teams: [
         { id: 'team_a', name: 'A 隊', color: '#ec4899' },
         { id: 'team_b', name: 'B 隊', color: '#8b5cf6' }
@@ -526,7 +527,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         return () => clearInterval(interval);
     }, [roomData.phaseEndTime, getCurrentTime]);
 
-    // Phase 轉換 (繪圖者端)
+    // Phase 轉換 (繪圖者端) - 三階段流程
     useEffect(() => {
         if (!isDrawer || !roomData.phaseEndTime) return;
 
@@ -534,10 +535,10 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
             const now = getCurrentTime();
             const remaining = roomData.phaseEndTime - now;
 
-            // Phase 1 結束 → 發送 Snapshot 1
+            // Phase 1 結束 → 發送 Snapshot 1，進入 Phase 2 (僅隊友可見)
             if (roomData.phase === 1 && remaining <= 0 && !snapshotSentRef.current.phase1) {
                 snapshotSentRef.current.phase1 = true;
-                console.log('[SketchGame] Phase 1 結束, 發送 Snapshot 1');
+                console.log('[SketchGame] Phase 1 結束, 發送 Snapshot 1 (隊友可見)');
                 const canvas = canvasRef.current;
                 if (canvas) {
                     const imageData = canvas.toDataURL('image/webp', 0.6);
@@ -550,20 +551,28 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 }
             }
 
-            // Phase 2 結束 → 發送 Snapshot 2 並換題
+            // Phase 2 結束 → 發送 Snapshot 2，進入 Phase 3 (全員可見搶答)
             if (roomData.phase === 2 && remaining <= 0 && !snapshotSentRef.current.phase2) {
                 snapshotSentRef.current.phase2 = true;
-                console.log('[SketchGame] Phase 2 結束, 發送 Snapshot 2');
+                console.log('[SketchGame] Phase 2 結束, 發送 Snapshot 2 (全員可見)');
                 const canvas = canvasRef.current;
                 if (canvas) {
                     const imageData = canvas.toDataURL('image/webp', 0.6);
+                    const phase3Time = roomData.settings.phase3Time || 10;
                     await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
                         canvasImage: imageData,
-                        canvasVisibility: 'all'
+                        canvasVisibility: 'all',
+                        phase: 3,
+                        phaseEndTime: now + phase3Time * 1000
                     });
                 }
-                // 3 秒後換下一題
-                setTimeout(() => nextRound(false), 3000);
+            }
+
+            // Phase 3 結束 → 換下一題
+            if (roomData.phase === 3 && remaining <= 0 && !snapshotSentRef.current.phase3) {
+                snapshotSentRef.current.phase3 = true;
+                console.log('[SketchGame] Phase 3 結束, 換下一題');
+                nextRound(false);
             }
         };
 
@@ -574,16 +583,21 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
     // 重置 Snapshot flag
     useEffect(() => {
-        snapshotSentRef.current = { phase1: false, phase2: false };
+        snapshotSentRef.current = { phase1: false, phase2: false, phase3: false };
     }, [roomData.currentWord]);
 
-    // Canvas 繪圖
+    // Canvas 繪圖 (含座標縮放修正)
     const startDraw = (e) => {
         if (!isDrawer) return;
         setIsDrawing(true);
-        const rect = canvasRef.current.getBoundingClientRect();
-        const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-        const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = (clientX - rect.left) * scaleX;
+        const y = (clientY - rect.top) * scaleY;
         lastPosRef.current = { x, y };
     };
 
@@ -592,8 +606,12 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
         const rect = canvas.getBoundingClientRect();
-        const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-        const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = (clientX - rect.left) * scaleX;
+        const y = (clientY - rect.top) * scaleY;
 
         ctx.beginPath();
         ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
@@ -713,11 +731,11 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                     {/* 倒數計時 */}
                     <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
-                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${roomData.phase === 1 ? 'bg-blue-500' : 'bg-orange-500'}`}>
+                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${roomData.phase === 1 ? 'bg-slate-500' : roomData.phase === 2 ? 'bg-blue-500' : 'bg-orange-500'}`}>
                                 Phase {roomData.phase}
                             </span>
                             <span className="text-slate-400">
-                                {roomData.phase === 1 ? '隊友專屬' : '全員可見'}
+                                {roomData.phase === 1 ? '繪圖中...' : roomData.phase === 2 ? '隊友猜題中' : '全員搶答！'}
                             </span>
                         </div>
                         <div className={`text-3xl font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : ''}`}>
@@ -858,23 +876,27 @@ function SketchSettingsModal({ localSettings, setLocalSettings, setShowSettings,
                 </div>
                 <div className="space-y-4">
                     <div>
-                        <label className="text-sm text-slate-400 block mb-1">Phase 1 時間 (秒)</label>
+                        <label className="text-sm text-slate-400 block mb-1">Phase 1 時間 - 繪圖 (秒)</label>
                         <input type="number" value={localSettings.phase1Time} onChange={e => setLocalSettings({ ...localSettings, phase1Time: parseInt(e.target.value) || 10 })} className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white" />
                     </div>
                     <div>
-                        <label className="text-sm text-slate-400 block mb-1">Phase 2 時間 (秒)</label>
+                        <label className="text-sm text-slate-400 block mb-1">Phase 2 時間 - 隊友猜題 (秒)</label>
                         <input type="number" value={localSettings.phase2Time} onChange={e => setLocalSettings({ ...localSettings, phase2Time: parseInt(e.target.value) || 10 })} className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white" />
+                    </div>
+                    <div>
+                        <label className="text-sm text-slate-400 block mb-1">Phase 3 時間 - 全員搶答 (秒)</label>
+                        <input type="number" value={localSettings.phase3Time || 10} onChange={e => setLocalSettings({ ...localSettings, phase3Time: parseInt(e.target.value) || 10 })} className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white" />
                     </div>
                     <div>
                         <label className="text-sm text-slate-400 block mb-1">總輪數</label>
                         <input type="number" value={localSettings.totalRounds} onChange={e => setLocalSettings({ ...localSettings, totalRounds: parseInt(e.target.value) || 5 })} className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white" />
                     </div>
                     <div>
-                        <label className="text-sm text-slate-400 block mb-1">Phase 1 得分</label>
+                        <label className="text-sm text-slate-400 block mb-1">隊友猜對得分 (Phase 2)</label>
                         <input type="number" value={localSettings.pointsPhase1} onChange={e => setLocalSettings({ ...localSettings, pointsPhase1: parseInt(e.target.value) || 3 })} className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white" />
                     </div>
                     <div>
-                        <label className="text-sm text-slate-400 block mb-1">Phase 2 得分</label>
+                        <label className="text-sm text-slate-400 block mb-1">搶答得分 (Phase 3)</label>
                         <input type="number" value={localSettings.pointsPhase2} onChange={e => setLocalSettings({ ...localSettings, pointsPhase2: parseInt(e.target.value) || 1 })} className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white" />
                     </div>
                     <label className="flex items-center gap-3 cursor-pointer">
