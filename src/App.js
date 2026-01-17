@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc, addDoc, collection, serverTimestamp, onSnapshot, deleteDoc } from 'firebase/firestore'; // 補上缺少的引用
 import {
-  Users, Gamepad2, ArrowLeft, LogIn, Palette
+  Users, Gamepad2, ArrowLeft, LogIn, Palette, Eye
 } from 'lucide-react';
 
 // 引用我們拆分出去的檔案
@@ -11,6 +11,7 @@ import CharadesGame from './CharadesGame';
 import EmojiGame from './EmojiGame';
 import MemoryGame from './MemoryGame';
 import SketchGame from './SketchGame';
+import SpyGame from './SpyGame';
 
 // ★ Firebase 效能監控 ★ (移除 PerformanceOverlay)
 import { MonitorProvider } from './FirebaseMonitor';
@@ -183,6 +184,17 @@ function MainApp() {
     );
   }
 
+  if (currentApp === 'spy') {
+    return (
+      <SpyGame
+        onBack={() => setCurrentApp('home')}
+        getNow={getNow}
+        currentUser={user}
+        isAdmin={isAdmin}
+      />
+    );
+  }
+
   // --- 大廳介面 ---
   return (
     <GameLobby
@@ -311,10 +323,30 @@ function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, hand
             </div>
           </div>
         </button>
+
+        {/* 諜影行動 - 可點擊 */}
+        <button
+          onClick={() => onSelectGame('spy')}
+          disabled={authLoading}
+          className={`group relative border rounded-2xl p-1 overflow-hidden transition-all duration-300 text-left shadow-xl ${authLoading ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700 hover:scale-105'}`}
+        >
+          <div className="h-full rounded-xl p-6 flex flex-col justify-between min-h-[200px]">
+            <div>
+              <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
+                <Eye className="text-white w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2 text-white">諜影行動</h2>
+              <p className="text-slate-400 text-sm">誰是臥底？推理身份，找出間諜！</p>
+            </div>
+            <div className="flex items-center gap-2 text-violet-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
+              {authLoading ? "連線中..." : "進入遊戲"} <ArrowLeft className="rotate-180" size={16} />
+            </div>
+          </div>
+        </button>
       </main>
 
       <footer className="mt-auto pt-12 text-slate-600 text-sm z-10">
-        v10.0 Add Soul Painter Game
+        v11.0 Add Spy Game
       </footer>
     </div>
   );
