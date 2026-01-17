@@ -8,46 +8,12 @@ import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
     Play, Settings, Plus, Check, X, ClipboardCopy,
     ArrowLeft, LogOut, Trash2, Crown, Eye, EyeOff, Cloud, Download,
-    Library, Users, Vote, MessageCircle, SkipForward
+    Library, Users, Vote, MessageCircle, SkipForward, BookOpen
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
+import { DEFAULT_SPY_PAIRS } from './spyData';
 
-// =================================================================
-// 預設題庫 (詞對)
-// =================================================================
-const DEFAULT_WORD_PAIRS = [
-    { a: '蘋果', b: '鳳梨' },
-    { a: '貓', b: '狗' },
-    { a: '麥當勞', b: '肯德基' },
-    { a: '鋼鐵人', b: '蝙蝠俠' },
-    { a: '咖啡', b: '奶茶' },
-    { a: '籃球', b: '足球' },
-    { a: '電影', b: '電視劇' },
-    { a: '手機', b: '平板' },
-    { a: '夏天', b: '冬天' },
-    { a: '海邊', b: '山上' },
-    { a: '醫生', b: '護士' },
-    { a: '老師', b: '教授' },
-    { a: '鋼琴', b: '吉他' },
-    { a: '牛肉麵', b: '拉麵' },
-    { a: '珍珠奶茶', b: '椰果奶茶' },
-    { a: '捷運', b: '公車' },
-    { a: '台北', b: '高雄' },
-    { a: '日本', b: '韓國' },
-    { a: '漢堡', b: '三明治' },
-    { a: '巧克力', b: '糖果' },
-    { a: '蛋糕', b: '餅乾' },
-    { a: '啤酒', b: '紅酒' },
-    { a: '眼鏡', b: '墨鏡' },
-    { a: '雨傘', b: '陽傘' },
-    { a: '書本', b: '雜誌' },
-    { a: '大學', b: '高中' },
-    { a: '律師', b: '法官' },
-    { a: '警察', b: '軍人' },
-    { a: '飛機', b: '高鐵' },
-    { a: '腳踏車', b: '機車' }
-];
 
 // 預設設定
 const DEFAULT_SETTINGS = {
@@ -329,7 +295,7 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
 
         // 收集題庫
         let allPairs = [];
-        if (roomData.useDefaultPairs !== false) allPairs = [...DEFAULT_WORD_PAIRS];
+        if (roomData.useDefaultPairs !== false) allPairs = [...DEFAULT_SPY_PAIRS];
         allPairs = [...allPairs, ...customPairs];
         if (allPairs.length === 0) return alert("請先新增題目！");
 
@@ -431,7 +397,7 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
                                 <div className={`w-5 h-5 rounded border flex items-center justify-center ${roomData.useDefaultPairs !== false ? 'bg-violet-500 border-violet-500' : 'border-slate-500'}`}>
                                     {roomData.useDefaultPairs !== false && <Check size={14} className="text-white" />}
                                 </div>
-                                <div><div className="font-bold">內建題庫 ({DEFAULT_WORD_PAIRS.length} 組)</div><div className="text-xs text-slate-400">蘋果/鳳梨、貓/狗...</div></div>
+                                <div><div className="font-bold">內建題庫 ({DEFAULT_SPY_PAIRS.length} 組)</div><div className="text-xs text-slate-400">蘋果/鳳梨、貓/狗...</div></div>
                             </div>
                         </div>
 
@@ -666,29 +632,28 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
 
     return (
         <div className="flex-1 p-4 text-white">
-            {/* 身分卡片 */}
+            {/* 身分卡片 (已隱藏角色名稱，防止被旁人窺視) */}
             <div className="mb-4">
                 <div
                     onClick={() => setShowWord(!showWord)}
-                    className={`bg-gradient-to-br ${me?.role === 'undercover' ? 'from-red-500 to-red-700' : me?.role === 'whiteboard' ? 'from-slate-500 to-slate-700' : 'from-green-500 to-green-700'} p-4 rounded-2xl cursor-pointer transition-all hover:scale-[1.02] select-none`}
+                    className="bg-gradient-to-br from-violet-600 to-indigo-700 p-4 rounded-2xl cursor-pointer transition-all hover:scale-[1.02] select-none"
                 >
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <span className="text-3xl">{getRoleEmoji(me?.role)}</span>
+                            <span className="text-3xl">🔮</span>
                             <div>
-                                <div className="text-sm opacity-80">你的身分</div>
-                                <div className="font-bold text-lg">{getRoleName(me?.role)}</div>
+                                <div className="text-sm opacity-80">你的秘密詞彙</div>
+                                <div className="font-bold text-lg">{showWord ? '已顯示' : '點擊查看'}</div>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
                             {showWord ? <EyeOff size={20} /> : <Eye size={20} />}
-                            <span className="text-sm">{showWord ? '隱藏' : '點擊查看'}</span>
                         </div>
                     </div>
                     {showWord && (
                         <div className="mt-4 pt-4 border-t border-white/30 text-center">
-                            <div className="text-sm opacity-80">你的詞彙</div>
-                            <div className="text-3xl font-bold">{me?.word || '???'}</div>
+                            <div className="text-5xl font-bold animate-pulse">{me?.word || '???'}</div>
+                            <div className="text-xs opacity-60 mt-2">記住這個詞彙，不要讓別人看到！</div>
                         </div>
                     )}
                 </div>
@@ -722,10 +687,19 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
                             >
                                 <div className="flex justify-between items-center">
                                     <span className="font-medium">{p.name}</span>
+                                    {/* ★★★ 盲投機制：只有主持人能看即時票數 ★★★ */}
                                     {(roomData.status === 'voting' || roomData.status === 'pk') && (
-                                        <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                                            {voteCounts[p.id] || 0} 票
-                                        </span>
+                                        isHost ? (
+                                            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                                                {voteCounts[p.id] || 0} 票
+                                            </span>
+                                        ) : (
+                                            Object.values(votes).includes(p.id) && (
+                                                <span className="bg-slate-600 text-slate-300 text-xs px-2 py-1 rounded-full">
+                                                    有人投了
+                                                </span>
+                                            )
+                                        )
                                     )}
                                 </div>
                                 {p.id === currentUser.uid && <span className="text-xs text-violet-400">（我）</span>}
@@ -746,6 +720,18 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
                             </div>
                         </>
                     )}
+
+                    {/* ★★★ 遊戲規則 ★★★ */}
+                    <div className="mt-4 pt-4 border-t border-slate-700">
+                        <h3 className="font-bold mb-2 flex items-center gap-2 text-slate-400"><BookOpen size={16} /> 遊戲規則</h3>
+                        <ul className="text-xs text-slate-500 space-y-1">
+                            <li>• 平民與臥底拿到<span className="text-violet-400">不同詞彙</span></li>
+                            <li>• 白板沒有詞彙，需靠猜測混入</li>
+                            <li>• 每輪輪流描述，<span className="text-orange-400">不能說謊但要模糊</span></li>
+                            <li>• 描述完後<span className="text-red-400">投票處決</span>一人</li>
+                            <li>• 臥底撐到最後即獲勝！</li>
+                        </ul>
+                    </div>
                 </div>
 
                 {/* 中間：敘述日誌 */}
