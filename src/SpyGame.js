@@ -939,13 +939,16 @@ function SpySettingsModal({ localSettings, setLocalSettings, setShowSettings, on
 function SpyCloudLibraryModal({ onClose, onImport, db, currentUser, isAdmin }) {
     const [decks, setDecks] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [uploadMode, setUploadMode] = useState(false);
+    const [newDeckName, setNewDeckName] = useState('');
+    const [newDeckPairs, setNewDeckPairs] = useState('');
 
     useEffect(() => {
         const fetchDecks = async () => {
             try {
                 const q = query(collection(db, 'spy_cloud_decks'), orderBy('createdAt', 'desc'), limit(20));
                 const snapshot = await getDocs(q);
-                const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                 setDecks(list);
                 console.log('[SpyGame] 載入雲端題庫:', list.length, '個');
             } catch (e) {
@@ -968,6 +971,44 @@ function SpyCloudLibraryModal({ onClose, onImport, db, currentUser, isAdmin }) {
         }
     };
 
+    // 上傳題庫到雲端
+    const uploadDeck = async () => {
+        if (!isAdmin) return alert("權限不足：只有管理員可以上傳題庫！");
+        if (!newDeckName.trim()) return alert("請輸入題庫名稱！");
+        if (!newDeckPairs.trim()) return alert("請輸入題目！");
+
+        // 解析詞對 (每行一組，格式：詞A|詞B)
+        const lines = newDeckPairs.split('\n').filter(l => l.trim());
+        const pairs = [];
+        for (const line of lines) {
+            if (!line.includes('|')) continue;
+            const parts = line.split('|').map(s => s.trim());
+            if (parts.length === 2 && parts[0] && parts[1]) {
+                pairs.push({ a: parts[0], b: parts[1] });
+            }
+        }
+
+        if (pairs.length === 0) return alert("格式錯誤！每行一組，使用 詞A|詞B 格式");
+
+        try {
+            const docRef = await addDoc(collection(db, 'spy_cloud_decks'), {
+                name: newDeckName.trim(),
+                pairs: pairs,
+                createdAt: serverTimestamp(),
+                creatorId: currentUser?.uid || 'anonymous',
+                creatorEmail: currentUser?.email || '匿名'
+            });
+            alert(`上傳成功！題庫 ID: ${docRef.id}，共 ${pairs.length} 組詞對`);
+            // 刷新列表
+            setDecks([{ id: docRef.id, name: newDeckName.trim(), pairs }, ...decks]);
+            setUploadMode(false);
+            setNewDeckName('');
+            setNewDeckPairs('');
+        } catch (e) {
+            alert("上傳失敗：" + e.message);
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
             <div className="bg-slate-800 w-full max-w-2xl rounded-2xl p-6 shadow-2xl flex flex-col max-h-[80vh] border border-slate-700">
@@ -978,32 +1019,72 @@ function SpyCloudLibraryModal({ onClose, onImport, db, currentUser, isAdmin }) {
                     <button onClick={onClose}><X className="text-slate-400 hover:text-white" /></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-                    {loading ? (
-                        <div className="text-center py-10 text-slate-400">載入中...</div>
-                    ) : decks.length === 0 ? (
-                        <div className="text-center py-10 text-slate-400">目前沒有公開題庫</div>
-                    ) : (
-                        decks.map(deck => (
-                            <div key={deck.id} className="bg-slate-700 border border-slate-600 rounded-xl p-4 flex justify-between items-center hover:border-slate-500 transition">
-                                <div>
-                                    <h4 className="font-bold text-lg text-white">{deck.name}</h4>
-                                    <div className="text-sm text-slate-400">詞對數: {deck.pairs?.length || 0}</div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => onImport(deck.id)} className="bg-violet-500 hover:bg-violet-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1">
-                                        <Download size={16} /> 匯入
-                                    </button>
-                                    {isAdmin && (
-                                        <button onClick={() => deleteDeck(deck.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/20 rounded-lg transition">
-                                            <Trash2 size={18} />
+                {/* 上傳模式切換 (僅 Admin) */}
+                {isAdmin && (
+                    <div className="mb-4">
+                        <button
+                            onClick={() => setUploadMode(!uploadMode)}
+                            className={`w-full py-2 rounded-lg font-bold transition ${uploadMode ? 'bg-slate-600 text-white' : 'bg-violet-500 hover:bg-violet-600 text-white'}`}
+                        >
+                            {uploadMode ? '返回列表' : '➕ 新增雲端題庫 (管理員)'}
+                        </button>
+                    </div>
+                )}
+
+                {/* 上傳表單 */}
+                {uploadMode && isAdmin ? (
+                    <div className="space-y-4 text-white">
+                        <div>
+                            <label className="text-sm text-slate-400 block mb-1">題庫名稱</label>
+                            <input
+                                value={newDeckName}
+                                onChange={e => setNewDeckName(e.target.value)}
+                                className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white"
+                                placeholder="輸入題庫名稱..."
+                            />
+                        </div>
+                        <div>
+                            <label className="text-sm text-slate-400 block mb-1">題目列表 (每行一組，格式: 詞A|詞B)</label>
+                            <textarea
+                                value={newDeckPairs}
+                                onChange={e => setNewDeckPairs(e.target.value)}
+                                className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white h-40 resize-none font-mono text-sm"
+                                placeholder="蘋果|鳳梨&#10;貓|狗&#10;咖啡|奶茶"
+                            />
+                        </div>
+                        <button onClick={uploadDeck} className="w-full py-3 bg-green-500 hover:bg-green-600 rounded-lg font-bold">
+                            ☁️ 上傳到雲端
+                        </button>
+                    </div>
+                ) : (
+                    /* 題庫列表 */
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                        {loading ? (
+                            <div className="text-center py-10 text-slate-400">載入中...</div>
+                        ) : decks.length === 0 ? (
+                            <div className="text-center py-10 text-slate-400">目前沒有公開題庫</div>
+                        ) : (
+                            decks.map(deck => (
+                                <div key={deck.id} className="bg-slate-700 border border-slate-600 rounded-xl p-4 flex justify-between items-center hover:border-slate-500 transition">
+                                    <div>
+                                        <h4 className="font-bold text-lg text-white">{deck.name}</h4>
+                                        <div className="text-sm text-slate-400">詞對數: {deck.pairs?.length || 0}</div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => onImport(deck.id)} className="bg-violet-500 hover:bg-violet-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1">
+                                            <Download size={16} /> 匯入
                                         </button>
-                                    )}
+                                        {isAdmin && (
+                                            <button onClick={() => deleteDeck(deck.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/20 rounded-lg transition">
+                                                <Trash2 size={18} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))
-                    )}
-                </div>
+                            ))
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
