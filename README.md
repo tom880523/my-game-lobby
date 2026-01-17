@@ -211,6 +211,14 @@ npm run build
 
 ### 更新歷史
 
+#### v11.1 (2026-01-18) - SpyGame 穩定性修復
+- ✅ **Bug 修復 - 斷線重連機制**：
+  - 原問題：遊戲中玩家若重新整理頁面會無法返回房間
+  - 修正：`joinRoom` 函式新增判斷邏輯，舊玩家 (已在 `players` 列表中) 允許重連
+- ✅ **Bug 修復 - 投票狀態卡死**：
+  - 原問題：第二輪投票或 PK 時，本地狀態未重置導致無法投票
+  - 修正：新增 `useEffect` 監聽 `status`, `currentRound`, `pkPlayers` 變化，自動重置 `voteSubmitted` 與 `selectedCandidateId`
+
 #### v11.0 (2026-01-17) - 諜影行動 (Spy Game)
 - ✅ **全新遊戲**：諜影行動 - 誰是臥底推理遊戲
 - ✅ **三種身分**：

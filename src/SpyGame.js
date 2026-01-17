@@ -132,19 +132,31 @@ export default function SpyGame({ onBack, getNow, currentUser, isAdmin }) {
                 const roomDoc = await transaction.get(roomRef);
                 if (!roomDoc.exists()) throw new Error("房間不存在");
                 const data = roomDoc.data();
-                if (data.status !== 'waiting') throw new Error("遊戲已開始，無法加入");
                 const currentPlayers = data.players || [];
                 const playerIndex = currentPlayers.findIndex(p => p.id === user.uid);
+                const isExistingPlayer = playerIndex >= 0;
+
+                // ★★★ 斷線重連邏輯 ★★★
+                // 如果是新玩家且遊戲已開始，拒絕加入
+                // 如果是舊玩家 (重連)，允許加入
+                if (data.status !== 'waiting' && !isExistingPlayer) {
+                    throw new Error("遊戲已開始，無法加入");
+                }
+
+                console.log(`[SpyGame] ${isExistingPlayer ? '重連' : '新加入'}房間: ${rId}`);
+
                 let newPlayersList;
-                if (playerIndex >= 0) {
+                if (isExistingPlayer) {
+                    // 舊玩家重連，更新名稱 (可能已改名)
                     newPlayersList = [...currentPlayers];
                     newPlayersList[playerIndex] = { ...newPlayersList[playerIndex], name: playerName };
                 } else {
+                    // 新玩家加入
                     newPlayersList = [...currentPlayers, { id: user.uid, name: playerName, role: null, word: null, status: 'alive', hasDescribed: false }];
                 }
                 transaction.update(roomRef, { players: newPlayersList });
             });
-            console.log('[SpyGame] 加入房間:', rId);
+            console.log('[SpyGame] 加入房間成功:', rId);
             setRoomId(rId); setView('room');
         } catch (e) { console.error(e); alert("加入失敗: " + e.message); }
         setLoading(false);
@@ -455,6 +467,13 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
     const [showWord, setShowWord] = useState(false);
     const [selectedCandidateId, setSelectedCandidateId] = useState(null); // 本地暫存，還沒送出
     const [voteSubmitted, setVoteSubmitted] = useState(false); // 是否已送出投票
+
+    // ★★★ 重置投票狀態：當進入新的投票階段時自動重置 ★★★
+    useEffect(() => {
+        console.log('[SpyGame] 狀態變更，重置投票狀態:', { status: roomData.status, round: roomData.currentRound, pkPlayers: roomData.pkPlayers });
+        setVoteSubmitted(false);
+        setSelectedCandidateId(null);
+    }, [roomData.status, roomData.currentRound, roomData.pkPlayers]);
 
     const players = roomData.players || [];
     const alivePlayers = players.filter(p => p.status === 'alive');
