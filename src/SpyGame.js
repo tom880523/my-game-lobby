@@ -113,7 +113,7 @@ export default function SpyGame({ onBack, getNow, currentUser, isAdmin }) {
                 currentPair: null, currentRound: 1,
                 turnOrder: [], currentTurnIndex: 0,
                 roundLogs: [], votes: {}, pkPlayers: [],
-                winner: null, customPairs: [], useDefaultPairs: true
+                winner: null, customDecks: [], useDefaultPairs: true
             });
             console.log('[SpyGame] 建立房間:', newRoomId);
             setRoomId(newRoomId); setView('room');
@@ -210,6 +210,18 @@ function SpyLobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, cr
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-300 to-purple-400">諜影行動</h1>
                     <p className="text-white/60 text-sm mt-1">找出臥底！隱藏身份！</p>
                 </div>
+
+                {/* ★★★ 遊戲規則 (移到大廳) ★★★ */}
+                <div className="bg-black/20 border border-violet-500/30 rounded-xl p-4">
+                    <h3 className="font-bold mb-2 flex items-center gap-2 text-violet-300"><BookOpen size={16} /> 遊戲規則</h3>
+                    <ul className="text-xs text-white/70 space-y-1">
+                        <li>• 平民與臥底拿到<span className="text-violet-400">不同詞彙</span>，白板沒有詞彙</li>
+                        <li>• 每輪輪流描述，<span className="text-orange-400">不能說謊但要模糊</span></li>
+                        <li>• 描述完後<span className="text-red-400">投票處決</span>一人</li>
+                        <li>• 臥底撐到最後即獲勝！</li>
+                    </ul>
+                </div>
+
                 <div className="space-y-4">
                     <div>
                         <label className="text-xs text-white/70 ml-1">你的名字</label>
@@ -229,17 +241,19 @@ function SpyLobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, cr
 }
 
 // =================================================================
-// Room View
+// Room View (v2.0 Deck System)
 // =================================================================
 function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurrentTime }) {
     const [showCloudLibrary, setShowCloudLibrary] = useState(false);
-    const [newPairInput, setNewPairInput] = useState('');
+    const [editingDeck, setEditingDeck] = useState(null); // { id, name, pairs } or null
 
     const players = roomData.players || [];
-    const customPairs = roomData.customPairs || [];
+    const customDecks = roomData.customDecks || [];
     const settings = roomData.settings || DEFAULT_SETTINGS;
     const totalPlayers = players.length;
     const civilianCount = totalPlayers - settings.undercoverCount - settings.whiteboardCount;
+
+    const generateDeckId = () => 'deck_' + Math.random().toString(36).substring(2, 8);
 
     const kickPlayer = async (targetId) => {
         if (!window.confirm("確定要踢出這位玩家嗎？")) return;
@@ -252,32 +266,41 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
         await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { hostId: targetId });
     };
 
-    const addPair = async () => {
-        if (!newPairInput.includes('|')) return alert("格式錯誤！請使用 詞A|詞B");
-        const parts = newPairInput.split('|').map(s => s.trim());
-        if (parts.length !== 2 || !parts[0] || !parts[1]) return alert("格式錯誤！");
-        const newPair = { a: parts[0], b: parts[1] };
-        await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { customPairs: [...customPairs, newPair] });
-        setNewPairInput('');
-    };
-
-    const removePair = async (index) => {
-        const updated = customPairs.filter((_, i) => i !== index);
-        await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { customPairs: updated });
-    };
-
     const toggleDefaultPairs = async () => {
         await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { useDefaultPairs: !roomData.useDefaultPairs });
+    };
+
+    const toggleDeck = async (deckId) => {
+        const updated = customDecks.map(d => d.id === deckId ? { ...d, enabled: !d.enabled } : d);
+        await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { customDecks: updated });
+    };
+
+    const deleteDeck = async (deckId) => {
+        if (!window.confirm("確定要刪除這個題庫嗎？")) return;
+        const updated = customDecks.filter(d => d.id !== deckId);
+        await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { customDecks: updated });
+    };
+
+    const saveDeck = async (deck) => {
+        const existing = customDecks.find(d => d.id === deck.id);
+        let updated;
+        if (existing) {
+            updated = customDecks.map(d => d.id === deck.id ? deck : d);
+        } else {
+            updated = [...customDecks, { ...deck, id: generateDeckId(), enabled: true }];
+        }
+        await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { customDecks: updated });
+        setEditingDeck(null);
     };
 
     const importDeckFromCloud = async (deckId) => {
         try {
             const deckDoc = await getDoc(doc(db, 'spy_cloud_decks', deckId));
             if (deckDoc.exists()) {
-                const deck = deckDoc.data();
-                const newPairs = [...customPairs, ...(deck.pairs || [])];
-                await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { customPairs: newPairs });
-                alert(`成功匯入：${deck.name} (${deck.pairs?.length || 0} 組)`);
+                const cloudDeck = deckDoc.data();
+                const newDeck = { id: generateDeckId(), name: cloudDeck.name, pairs: cloudDeck.pairs || [], enabled: true };
+                await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { customDecks: [...customDecks, newDeck] });
+                alert(`成功匯入：${cloudDeck.name} (${cloudDeck.pairs?.length || 0} 組)`);
                 setShowCloudLibrary(false);
             } else {
                 alert("找不到此代碼的題庫");
@@ -288,69 +311,42 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
     };
 
     const startGame = async () => {
-        // 驗證人數
         if (civilianCount < 1) return alert("平民人數不足！請調整臥底/白板人數");
         if (settings.undercoverCount < 1) return alert("至少需要 1 位臥底！");
         if (totalPlayers < 3) return alert("至少需要 3 位玩家！");
 
-        // 收集題庫
+        // 收集題庫 (從 enabled 的 decks)
         let allPairs = [];
         if (roomData.useDefaultPairs !== false) allPairs = [...DEFAULT_SPY_PAIRS];
-        allPairs = [...allPairs, ...customPairs];
+        customDecks.filter(d => d.enabled !== false).forEach(d => { allPairs = [...allPairs, ...(d.pairs || [])]; });
         if (allPairs.length === 0) return alert("請先新增題目！");
 
-        // 隨機選一組詞對
         const selectedPair = allPairs[Math.floor(Math.random() * allPairs.length)];
-
-        // 分配身分
         const shuffled = [...players].sort(() => 0.5 - Math.random());
         const assignedPlayers = shuffled.map((p, i) => {
             let role, word;
-            if (i < settings.undercoverCount) {
-                role = 'undercover';
-                word = selectedPair.b;
-            } else if (i < settings.undercoverCount + settings.whiteboardCount) {
-                role = 'whiteboard';
-                word = null;
-            } else {
-                role = 'civilian';
-                word = selectedPair.a;
-            }
+            if (i < settings.undercoverCount) { role = 'undercover'; word = selectedPair.b; }
+            else if (i < settings.undercoverCount + settings.whiteboardCount) { role = 'whiteboard'; word = null; }
+            else { role = 'civilian'; word = selectedPair.a; }
             return { ...p, role, word, status: 'alive', hasDescribed: false };
         });
-
-        // 建立發言順序
         const turnOrder = assignedPlayers.filter(p => p.status === 'alive').map(p => p.id).sort(() => 0.5 - Math.random());
 
         console.log('[SpyGame] 開始遊戲, 詞對:', selectedPair);
-
         await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
-            status: 'description',
-            players: assignedPlayers,
-            currentPair: selectedPair,
-            currentRound: 1,
-            turnOrder: turnOrder,
-            currentTurnIndex: 0,
-            roundLogs: [],
-            votes: {},
-            pkPlayers: [],
-            winner: null
+            status: 'description', players: assignedPlayers, currentPair: selectedPair, currentRound: 1,
+            turnOrder, currentTurnIndex: 0, roundLogs: [], votes: {}, pkPlayers: [], winner: null
         });
     };
 
     const canStart = totalPlayers >= 3 && civilianCount >= 1 && settings.undercoverCount >= 1;
+    const enabledDeckCount = customDecks.filter(d => d.enabled !== false).length;
+    const totalCustomPairs = customDecks.filter(d => d.enabled !== false).reduce((sum, d) => sum + (d.pairs?.length || 0), 0);
 
     return (
         <>
-            {showCloudLibrary && (
-                <SpyCloudLibraryModal
-                    onClose={() => setShowCloudLibrary(false)}
-                    onImport={importDeckFromCloud}
-                    db={db}
-                    currentUser={currentUser}
-                    isAdmin={isAdmin}
-                />
-            )}
+            {showCloudLibrary && <SpyCloudLibraryModal onClose={() => setShowCloudLibrary(false)} onImport={importDeckFromCloud} db={db} currentUser={currentUser} isAdmin={isAdmin} />}
+            {editingDeck !== null && <SpyDeckEditorModal deck={editingDeck} onSave={saveDeck} onClose={() => setEditingDeck(null)} isAdmin={isAdmin} db={db} currentUser={currentUser} />}
 
             <div className="p-4 md:p-8 w-full space-y-6 text-white">
                 <div className="grid md:grid-cols-2 gap-6">
@@ -374,8 +370,6 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
                                 </div>
                             ))}
                         </div>
-
-                        {/* 身分分配預覽 */}
                         <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl">
                             <h3 className="text-sm font-bold text-slate-400 mb-2">身分分配</h3>
                             <div className="grid grid-cols-3 gap-2 text-center text-sm">
@@ -387,7 +381,7 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
                         </div>
                     </div>
 
-                    {/* 右側：題庫設定 */}
+                    {/* 右側：題庫設定 (v2.0 Deck System) */}
                     <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl space-y-4">
                         <h2 className="text-lg font-bold flex justify-between items-center">題庫設定 {!isHost && <span className="text-xs font-normal text-slate-500">僅主持人可編輯</span>}</h2>
 
@@ -401,23 +395,36 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
                             </div>
                         </div>
 
-                        {/* 自訂題目 */}
+                        {/* 題庫包列表 */}
                         <div className="space-y-2">
-                            <div className="text-sm text-slate-400">自訂題目 ({customPairs.length} 組)</div>
-                            <div className="max-h-40 overflow-y-auto space-y-1">
-                                {customPairs.map((pair, i) => (
-                                    <div key={i} className="flex justify-between items-center bg-slate-700 p-2 rounded-lg text-sm">
-                                        <span>{pair.a} / {pair.b}</span>
-                                        {isHost && <button onClick={() => removePair(i)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>}
+                            <div className="text-sm text-slate-400 flex justify-between items-center">
+                                <span>自訂題庫 ({enabledDeckCount} 啟用 / {totalCustomPairs} 組)</span>
+                                {isHost && <button onClick={() => setEditingDeck({ id: null, name: '', pairs: [] })} className="text-violet-400 hover:text-violet-300 text-xs flex items-center gap-1"><Plus size={14} /> 新增題庫</button>}
+                            </div>
+                            <div className="max-h-48 overflow-y-auto space-y-2">
+                                {customDecks.map(deck => (
+                                    <div key={deck.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${deck.enabled !== false ? 'border-violet-500/50 bg-violet-500/10' : 'border-slate-600 bg-slate-800 opacity-60'}`}>
+                                        <div className="flex items-center gap-3">
+                                            {isHost && (
+                                                <button onClick={() => toggleDeck(deck.id)} className={`w-5 h-5 rounded border flex items-center justify-center transition ${deck.enabled !== false ? 'bg-violet-500 border-violet-500' : 'border-slate-500'}`}>
+                                                    {deck.enabled !== false && <Check size={14} className="text-white" />}
+                                                </button>
+                                            )}
+                                            <div>
+                                                <div className={`font-bold ${deck.enabled === false ? 'line-through' : ''}`}>{deck.name}</div>
+                                                <div className="text-xs text-slate-400">{deck.pairs?.length || 0} 組詞對</div>
+                                            </div>
+                                        </div>
+                                        {isHost && (
+                                            <div className="flex gap-1">
+                                                <button onClick={() => setEditingDeck(deck)} className="p-1 text-slate-400 hover:text-violet-400"><Settings size={14} /></button>
+                                                <button onClick={() => deleteDeck(deck.id)} className="p-1 text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
+                                {customDecks.length === 0 && <div className="text-center text-slate-500 py-4 text-sm">尚無自訂題庫</div>}
                             </div>
-                            {isHost && (
-                                <div className="flex gap-2">
-                                    <input value={newPairInput} onChange={e => setNewPairInput(e.target.value)} className="flex-1 bg-slate-700 border border-slate-600 px-3 py-2 rounded-lg text-sm text-white" placeholder="詞A|詞B" onKeyDown={e => e.key === 'Enter' && addPair()} />
-                                    <button onClick={addPair} className="bg-violet-500 text-white px-4 rounded-lg font-bold"><Plus size={18} /></button>
-                                </div>
-                            )}
                         </div>
 
                         {/* 雲端圖書館 */}
@@ -441,12 +448,13 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
 }
 
 // =================================================================
-// Game Interface
+// Game Interface (v2.0 Two-Step Blind Voting)
 // =================================================================
 function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTime }) {
     const [description, setDescription] = useState('');
     const [showWord, setShowWord] = useState(false);
-    const [selectedVote, setSelectedVote] = useState(null);
+    const [selectedCandidateId, setSelectedCandidateId] = useState(null); // 本地暫存，還沒送出
+    const [voteSubmitted, setVoteSubmitted] = useState(false); // 是否已送出投票
 
     const players = roomData.players || [];
     const alivePlayers = players.filter(p => p.status === 'alive');
@@ -457,47 +465,47 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
     const roundLogs = roomData.roundLogs || [];
     const votes = roomData.votes || {};
     const pkPlayers = roomData.pkPlayers || [];
-    // eslint-disable-next-line no-unused-vars
-    const isInPK = roomData.status === 'pk' && pkPlayers.includes(currentUser.uid);
 
-    // 計算票數
-    const voteCounts = {};
-    Object.values(votes).forEach(targetId => {
-        voteCounts[targetId] = (voteCounts[targetId] || 0) + 1;
-    });
+    // 檢查自己是否已投票 (從 DB)
+    const myVoteInDb = votes[currentUser.uid];
+    const hasVotedInDb = !!myVoteInDb;
 
     // 提交描述
     const submitDescription = async () => {
         if (!description.trim()) return;
         const newLog = { playerId: currentUser.uid, name: me.name, content: description.trim() };
-
-        // 更新輪次
         const nextIndex = roomData.currentTurnIndex + 1;
         const allDescribed = nextIndex >= roomData.turnOrder.length;
 
         if (allDescribed) {
-            // 進入投票階段
             await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
-                roundLogs: arrayUnion(newLog),
-                status: 'voting',
-                votes: {}
+                roundLogs: arrayUnion(newLog), status: 'voting', votes: {}
             });
         } else {
             await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
-                roundLogs: arrayUnion(newLog),
-                currentTurnIndex: nextIndex
+                roundLogs: arrayUnion(newLog), currentTurnIndex: nextIndex
             });
         }
         setDescription('');
     };
 
-    // 投票
-    const submitVote = async (targetId) => {
+    // ★★★ 兩段式投票：選擇候選人 (本地) ★★★
+    const selectCandidate = (targetId) => {
         if (me.status === 'out') return;
+        if (hasVotedInDb || voteSubmitted) return; // 已送出就不能改
         if (targetId === currentUser.uid) return alert("不能投給自己！");
-        setSelectedVote(targetId);
+        // PK 階段只能投給 pkPlayers
+        if (roomData.status === 'pk' && !pkPlayers.includes(targetId)) {
+            return alert("PK 階段只能投給平手玩家！");
+        }
+        setSelectedCandidateId(targetId);
+    };
 
-        const newVotes = { ...votes, [currentUser.uid]: targetId };
+    // ★★★ 兩段式投票：確認送出 ★★★
+    const confirmVote = async () => {
+        if (!selectedCandidateId) return alert("請先選擇要投票的對象！");
+        setVoteSubmitted(true);
+        const newVotes = { ...votes, [currentUser.uid]: selectedCandidateId };
         await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { votes: newVotes });
     };
 
@@ -675,36 +683,38 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
                 <div className="bg-slate-800 rounded-2xl p-4">
                     <h3 className="font-bold mb-3 flex items-center gap-2"><Users size={18} /> 存活玩家</h3>
                     <div className="space-y-2">
-                        {alivePlayers.map(p => (
-                            <div
-                                key={p.id}
-                                onClick={() => (roomData.status === 'voting' || roomData.status === 'pk') && submitVote(p.id)}
-                                className={`p-3 rounded-xl border transition-all ${p.id === roomData.turnOrder[roomData.currentTurnIndex] ? 'bg-violet-500/30 border-violet-500 ring-2 ring-violet-400' :
-                                    selectedVote === p.id ? 'bg-red-500/30 border-red-500' :
-                                        votes[currentUser.uid] === p.id ? 'bg-orange-500/30 border-orange-500' :
-                                            'bg-slate-700 border-slate-600'
-                                    } ${(roomData.status === 'voting' || roomData.status === 'pk') && p.id !== currentUser.uid ? 'cursor-pointer hover:border-violet-400' : ''}`}
-                            >
-                                <div className="flex justify-between items-center">
-                                    <span className="font-medium">{p.name}</span>
-                                    {/* ★★★ 盲投機制：只有主持人能看即時票數 ★★★ */}
-                                    {(roomData.status === 'voting' || roomData.status === 'pk') && (
-                                        isHost ? (
-                                            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                                                {voteCounts[p.id] || 0} 票
+                        {alivePlayers.map(p => {
+                            const isInVoting = roomData.status === 'voting' || roomData.status === 'pk';
+                            const canClickThisPlayer = isInVoting && p.id !== currentUser.uid && !hasVotedInDb && !voteSubmitted;
+                            const isPKDisabled = roomData.status === 'pk' && !pkPlayers.includes(p.id);
+
+                            return (
+                                <div
+                                    key={p.id}
+                                    onClick={() => canClickThisPlayer && !isPKDisabled && selectCandidate(p.id)}
+                                    className={`p-3 rounded-xl border transition-all ${p.id === roomData.turnOrder[roomData.currentTurnIndex] ? 'bg-violet-500/30 border-violet-500 ring-2 ring-violet-400' :
+                                        selectedCandidateId === p.id ? 'bg-red-500/30 border-red-500 ring-2 ring-red-400' :
+                                            hasVotedInDb && myVoteInDb === p.id ? 'bg-orange-500/30 border-orange-500' :
+                                                isPKDisabled && isInVoting ? 'bg-slate-800 border-slate-700 opacity-40' :
+                                                    'bg-slate-700 border-slate-600'
+                                        } ${canClickThisPlayer && !isPKDisabled ? 'cursor-pointer hover:border-violet-400' : ''}`}
+                                >
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium">{p.name}</span>
+                                            {roomData.status === 'pk' && pkPlayers.includes(p.id) && <span className="text-xs bg-red-500/30 text-red-300 px-1 rounded">PK</span>}
+                                        </div>
+                                        {/* ★★★ 絕對盲投：僅顯示已投票狀態 ★★★ */}
+                                        {isInVoting && votes[p.id] && (
+                                            <span className="bg-slate-600 text-slate-300 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                                                <Check size={12} /> 有人投了
                                             </span>
-                                        ) : (
-                                            Object.values(votes).includes(p.id) && (
-                                                <span className="bg-slate-600 text-slate-300 text-xs px-2 py-1 rounded-full">
-                                                    有人投了
-                                                </span>
-                                            )
-                                        )
-                                    )}
+                                        )}
+                                    </div>
+                                    {p.id === currentUser.uid && <span className="text-xs text-violet-400">（我）</span>}
                                 </div>
-                                {p.id === currentUser.uid && <span className="text-xs text-violet-400">（我）</span>}
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {outPlayers.length > 0 && (
@@ -720,18 +730,6 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
                             </div>
                         </>
                     )}
-
-                    {/* ★★★ 遊戲規則 ★★★ */}
-                    <div className="mt-4 pt-4 border-t border-slate-700">
-                        <h3 className="font-bold mb-2 flex items-center gap-2 text-slate-400"><BookOpen size={16} /> 遊戲規則</h3>
-                        <ul className="text-xs text-slate-500 space-y-1">
-                            <li>• 平民與臥底拿到<span className="text-violet-400">不同詞彙</span></li>
-                            <li>• 白板沒有詞彙，需靠猜測混入</li>
-                            <li>• 每輪輪流描述，<span className="text-orange-400">不能說謊但要模糊</span></li>
-                            <li>• 描述完後<span className="text-red-400">投票處決</span>一人</li>
-                            <li>• 臥底撐到最後即獲勝！</li>
-                        </ul>
-                    </div>
                 </div>
 
                 {/* 中間：敘述日誌 */}
@@ -782,23 +780,65 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
                     )}
 
                     {roomData.status === 'voting' && (
-                        <div className="space-y-2">
-                            <div className="text-center text-orange-400 font-bold">投票階段！點擊玩家頭像投票</div>
-                            {votes[currentUser.uid] && <div className="text-center text-slate-400">你已投票給 {players.find(p => p.id === votes[currentUser.uid])?.name}</div>}
+                        <div className="space-y-3">
+                            <div className="text-center text-orange-400 font-bold">投票階段！點擊玩家頭像選擇投票對象</div>
+
+                            {/* 顯示目前選擇 */}
+                            {selectedCandidateId && !hasVotedInDb && !voteSubmitted && (
+                                <div className="bg-red-500/20 border border-red-500/50 p-3 rounded-xl text-center">
+                                    <div className="text-sm text-slate-300">你選擇投票給：</div>
+                                    <div className="text-lg font-bold text-red-400">{players.find(p => p.id === selectedCandidateId)?.name}</div>
+                                    <button onClick={confirmVote} className="mt-2 px-6 py-2 bg-red-500 hover:bg-red-600 rounded-lg font-bold text-white">
+                                        確認投票
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* 已投票狀態 */}
+                            {(hasVotedInDb || voteSubmitted) && (
+                                <div className="bg-green-500/20 border border-green-500/50 p-3 rounded-xl text-center">
+                                    <div className="text-green-400 font-bold flex items-center justify-center gap-2">
+                                        <Check size={18} /> 已投票給 {players.find(p => p.id === (myVoteInDb || selectedCandidateId))?.name}
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-1">等待其他玩家投票...</div>
+                                </div>
+                            )}
+
+                            {/* 主持人結算按鈕 */}
                             {isHost && Object.keys(votes).length >= alivePlayers.length - 1 && (
                                 <button onClick={settleVotes} className="w-full py-3 bg-red-500 hover:bg-red-600 rounded-xl font-bold">
-                                    <Vote className="inline mr-2" /> 結算投票
+                                    <Vote className="inline mr-2" /> 結算投票 ({Object.keys(votes).length}/{alivePlayers.length - 1} 已投票)
                                 </button>
                             )}
                         </div>
                     )}
 
                     {roomData.status === 'pk' && (
-                        <div className="space-y-2">
-                            <div className="text-center text-red-400 font-bold">PK 階段！{pkPlayers.map(id => players.find(p => p.id === id)?.name).join(' vs ')}</div>
+                        <div className="space-y-3">
+                            <div className="text-center text-red-400 font-bold">⚔️ PK 階段！{pkPlayers.map(id => players.find(p => p.id === id)?.name).join(' vs ')}</div>
+                            <div className="text-center text-xs text-slate-500">只能投給 PK 候選人</div>
+
+                            {selectedCandidateId && !hasVotedInDb && !voteSubmitted && (
+                                <div className="bg-red-500/20 border border-red-500/50 p-3 rounded-xl text-center">
+                                    <div className="text-sm text-slate-300">你選擇投票給：</div>
+                                    <div className="text-lg font-bold text-red-400">{players.find(p => p.id === selectedCandidateId)?.name}</div>
+                                    <button onClick={confirmVote} className="mt-2 px-6 py-2 bg-red-500 hover:bg-red-600 rounded-lg font-bold text-white">
+                                        確認投票
+                                    </button>
+                                </div>
+                            )}
+
+                            {(hasVotedInDb || voteSubmitted) && (
+                                <div className="bg-green-500/20 border border-green-500/50 p-3 rounded-xl text-center">
+                                    <div className="text-green-400 font-bold flex items-center justify-center gap-2">
+                                        <Check size={18} /> 已投票
+                                    </div>
+                                </div>
+                            )}
+
                             {isHost && (
                                 <button onClick={settlePK} className="w-full py-3 bg-red-500 hover:bg-red-600 rounded-xl font-bold">
-                                    <Vote className="inline mr-2" /> 結算 PK
+                                    <Vote className="inline mr-2" /> 結算 PK ({Object.keys(votes).length} 票)
                                 </button>
                             )}
                         </div>
@@ -876,6 +916,130 @@ function SpyResultView({ roomData, isHost, roomId }) {
                         <Play className="inline mr-2" /> 再來一局
                     </button>
                 )}
+            </div>
+        </div>
+    );
+}
+
+// =================================================================
+// Deck Editor Modal (NEW v2.0)
+// =================================================================
+function SpyDeckEditorModal({ deck, onSave, onClose, isAdmin, db, currentUser }) {
+    const [name, setName] = useState(deck?.name || '');
+    const [pairs, setPairs] = useState(deck?.pairs || []);
+    const [newPairInput, setNewPairInput] = useState('');
+    const [csvInput, setCsvInput] = useState('');
+    const [showCsvImport, setShowCsvImport] = useState(false);
+
+    const addPair = () => {
+        if (!newPairInput.includes('|')) return alert("格式錯誤！請使用 詞A|詞B");
+        const parts = newPairInput.split('|').map(s => s.trim());
+        if (parts.length !== 2 || !parts[0] || !parts[1]) return alert("格式錯誤！");
+        setPairs([...pairs, { a: parts[0], b: parts[1] }]);
+        setNewPairInput('');
+    };
+
+    const removePair = (index) => {
+        setPairs(pairs.filter((_, i) => i !== index));
+    };
+
+    const handleCsvImport = () => {
+        const lines = csvInput.split('\n').filter(l => l.trim());
+        const newPairs = [];
+        for (const line of lines) {
+            if (!line.includes('|')) continue;
+            const parts = line.split('|').map(s => s.trim());
+            if (parts.length === 2 && parts[0] && parts[1]) {
+                newPairs.push({ a: parts[0], b: parts[1] });
+            }
+        }
+        if (newPairs.length > 0) {
+            setPairs([...pairs, ...newPairs]);
+            setCsvInput('');
+            setShowCsvImport(false);
+            alert(`成功匯入 ${newPairs.length} 組詞對！`);
+        } else {
+            alert("找不到有效的詞對！");
+        }
+    };
+
+    const handleSave = () => {
+        if (!name.trim()) return alert("請輸入題庫名稱！");
+        if (pairs.length === 0) return alert("請至少新增一組詞對！");
+        onSave({ ...deck, name: name.trim(), pairs });
+    };
+
+    const uploadToCloud = async () => {
+        if (!isAdmin) return alert("權限不足！");
+        if (!name.trim() || pairs.length === 0) return alert("題庫名稱和詞對不能為空！");
+        try {
+            const docRef = await addDoc(collection(db, 'spy_cloud_decks'), {
+                name: name.trim(), pairs,
+                createdAt: serverTimestamp(),
+                creatorId: currentUser?.uid || 'anonymous',
+                creatorEmail: currentUser?.email || '匿名'
+            });
+            alert(`上傳成功！雲端題庫 ID: ${docRef.id}`);
+        } catch (e) {
+            alert("上傳失敗：" + e.message);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-800 w-full max-w-lg rounded-2xl p-6 border border-slate-700 space-y-4 max-h-[85vh] overflow-y-auto">
+                <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                    <h3 className="font-bold text-xl text-white">{deck?.id ? '編輯題庫' : '新增題庫'}</h3>
+                    <button onClick={onClose}><X className="text-slate-400 hover:text-white" /></button>
+                </div>
+
+                {/* 題庫名稱 */}
+                <div>
+                    <label className="text-sm text-slate-400 block mb-1">題庫名稱</label>
+                    <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg text-white" placeholder="輸入題庫名稱..." />
+                </div>
+
+                {/* 詞對列表 */}
+                <div>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm text-slate-400">詞對列表 ({pairs.length} 組)</label>
+                        <button onClick={() => setShowCsvImport(!showCsvImport)} className="text-xs text-violet-400 hover:text-violet-300">
+                            {showCsvImport ? '取消' : '+ CSV 匯入'}
+                        </button>
+                    </div>
+
+                    {showCsvImport && (
+                        <div className="mb-3 space-y-2">
+                            <textarea value={csvInput} onChange={e => setCsvInput(e.target.value)} className="w-full bg-slate-700 border border-slate-600 px-3 py-2 rounded-lg text-white text-sm h-24 font-mono" placeholder="每行一組，格式：詞A|詞B" />
+                            <button onClick={handleCsvImport} className="w-full py-2 bg-violet-500 hover:bg-violet-600 rounded-lg text-sm font-bold">匯入 CSV</button>
+                        </div>
+                    )}
+
+                    <div className="max-h-40 overflow-y-auto space-y-1 mb-2">
+                        {pairs.map((pair, i) => (
+                            <div key={i} className="flex justify-between items-center bg-slate-700 p-2 rounded-lg text-sm">
+                                <span>{pair.a} / {pair.b}</span>
+                                <button onClick={() => removePair(i)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                            </div>
+                        ))}
+                        {pairs.length === 0 && <div className="text-center text-slate-500 py-4 text-sm">尚無詞對</div>}
+                    </div>
+
+                    <div className="flex gap-2">
+                        <input value={newPairInput} onChange={e => setNewPairInput(e.target.value)} className="flex-1 bg-slate-700 border border-slate-600 px-3 py-2 rounded-lg text-sm text-white" placeholder="詞A|詞B" onKeyDown={e => e.key === 'Enter' && addPair()} />
+                        <button onClick={addPair} className="bg-violet-500 text-white px-4 rounded-lg font-bold"><Plus size={18} /></button>
+                    </div>
+                </div>
+
+                {/* 操作按鈕 */}
+                <div className="flex gap-2 pt-2 border-t border-slate-700">
+                    <button onClick={handleSave} className="flex-1 py-3 bg-violet-500 hover:bg-violet-600 rounded-xl font-bold text-white">儲存題庫</button>
+                    {isAdmin && (
+                        <button onClick={uploadToCloud} className="py-3 px-4 bg-sky-500 hover:bg-sky-600 rounded-xl font-bold text-white flex items-center gap-1">
+                            <Cloud size={18} /> 上傳雲端
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
