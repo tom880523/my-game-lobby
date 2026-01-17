@@ -582,8 +582,9 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const [isEraser, setIsEraser] = useState(false);
     const [guess, setGuess] = useState('');
     const [timeLeft, setTimeLeft] = useState(0);
+    const [showWrong, setShowWrong] = useState(false);
     const lastPosRef = useRef({ x: 0, y: 0 });
-    const snapshotSentRef = useRef({ phase1: false, phase2: false });
+    const snapshotSentRef = useRef({ phase1: false, phase2: false, phase3: false });
 
     const teams = roomData.settings.teams || [];
     const scores = roomData.scores || {};
@@ -645,11 +646,21 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 }
             }
 
-            // Phase 3 結束 → 換下一題
+            // Phase 3 結束 → 寫入過場畫面再換下一題
             if (roomData.phase === 3 && remaining <= 0 && !snapshotSentRef.current.phase3) {
                 snapshotSentRef.current.phase3 = true;
-                console.log('[SketchGame] Phase 3 結束, 換下一題');
-                nextRound(false);
+                console.log('[SketchGame] Phase 3 結束, 無人答對');
+                // 寫入過場資料 (無人答對)
+                await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
+                    roundResult: {
+                        answer: roomData.currentWord,
+                        winner: null,
+                        winnerTeam: null,
+                        points: 0
+                    }
+                });
+                // 3 秒後換下一題
+                setTimeout(() => nextRound(false), 3000);
             }
         };
 
@@ -744,33 +755,48 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
             phaseEndTime: now + roomData.settings.phase1Time * 1000,
             canvasImage: null,
             canvasVisibility: 'drawer',
+            roundResult: null,  // 清除過場資料
             [`drawerIndices.${nextTeam.id}`]: nextDrawerIdx
         });
     };
 
-    // 提交答案
+    // 提交答案 (修正版)
     const submitGuess = async () => {
         if (!guess.trim()) return;
+        // 防止重複答題 (已在過場階段)
+        if (roomData.roundResult) return;
+
         const answer = guess.trim().toLowerCase();
         const correct = roomData.currentWord?.toLowerCase();
+        const myName = roomData.players?.find(p => p.id === currentUser.uid)?.name || '玄家';
 
         console.log('[SketchGame] 提交答案:', answer, '正確答案:', correct);
 
         if (answer === correct) {
-            const points = roomData.phase === 1 ? roomData.settings.pointsPhase1 : roomData.settings.pointsPhase2;
+            // 修正計分邏輯: Phase 2 = pointsPhase1 (隊友), Phase 3 = pointsPhase2 (全員)
+            const points = roomData.phase === 2 ? roomData.settings.pointsPhase1 : roomData.settings.pointsPhase2;
             const newScores = { ...scores };
             newScores[myTeam] = (newScores[myTeam] || 0) + points;
 
-            await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), { scores: newScores });
-            alert(`🎉 答對了！+${points} 分`);
+            // 寫入 roundResult 過場資料
+            await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
+                scores: newScores,
+                roundResult: {
+                    answer: roomData.currentWord,
+                    winner: myName,
+                    winnerTeam: myTeam,
+                    points: points
+                }
+            });
             setGuess('');
 
-            // 由繪圖者負責換題
-            if (isDrawer) {
-                setTimeout(() => nextRound(true, myTeam), 1000);
-            }
+            // 3 秒後換下一題 (由答對的人觸發)
+            setTimeout(() => nextRound(true, myTeam), 3000);
         } else {
             setGuess('');
+            // 錯誤提示
+            setShowWrong(true);
+            setTimeout(() => setShowWrong(false), 1000);
         }
     };
 
@@ -782,8 +808,35 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         return false;
     };
 
+    // 主持人提前結算
+    const forceEnd = async () => {
+        if (!window.confirm("確定要提前結算嗎？將直接進入計分板。")) return;
+        await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), { status: 'finished' });
+    };
+
     return (
-        <div className="flex-1 p-4 text-white">
+        <div className="flex-1 p-4 text-white relative">
+            {/* ★★★ 過場彈窗 (roundResult) ★★★ */}
+            {roomData.roundResult && (
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-in fade-in duration-300">
+                    <div className="text-center space-y-4">
+                        <div className="text-6xl mb-4">{roomData.roundResult.winner ? '🎉' : '⏰'}</div>
+                        <div className="text-slate-400 text-lg">正確答案</div>
+                        <div className="text-5xl font-bold text-pink-400 animate-pulse">
+                            {roomData.roundResult.answer}
+                        </div>
+                        {roomData.roundResult.winner ? (
+                            <div className="text-2xl text-green-400 font-bold mt-4">
+                                🏆 {roomData.roundResult.winner} 答對！ +{roomData.roundResult.points} 分
+                            </div>
+                        ) : (
+                            <div className="text-xl text-slate-400 mt-4">時間到，無人答對</div>
+                        )}
+                        <div className="text-slate-500 text-sm mt-6 animate-pulse">下一題即將開始...</div>
+                    </div>
+                </div>
+            )}
+
             {/* 頂部資訊 */}
             <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-4">
@@ -794,10 +847,18 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         </div>
                     ))}
                 </div>
-                <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-xl">
-                    <span className="text-slate-400">第</span>
-                    <span className="font-bold text-xl">{roomData.currentRound}</span>
-                    <span className="text-slate-400">/ {roomData.settings.totalRounds * teams.length}</span>
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-xl">
+                        <span className="text-slate-400">第</span>
+                        <span className="font-bold text-xl">{roomData.currentRound}</span>
+                        <span className="text-slate-400">/ {roomData.settings.totalRounds * teams.length}</span>
+                    </div>
+                    {/* ★★★ 主持人提前結算按鈕 ★★★ */}
+                    {isHost && (
+                        <button onClick={forceEnd} className="px-4 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-xl text-sm font-bold">
+                            提前結算
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -887,8 +948,15 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
                     {!isDrawer && canSeeImage() && (
                         <div className="flex gap-2">
-                            <input value={guess} onChange={e => setGuess(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitGuess()} className="flex-1 bg-slate-700 border border-slate-600 px-4 py-3 rounded-xl text-white" placeholder="輸入答案..." />
-                            <button onClick={submitGuess} className="bg-pink-500 hover:bg-pink-600 px-6 rounded-xl font-bold">送出</button>
+                            <input
+                                value={guess}
+                                onChange={e => setGuess(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && submitGuess()}
+                                className={`flex-1 bg-slate-700 border px-4 py-3 rounded-xl text-white transition-all ${showWrong ? 'border-red-500 animate-pulse bg-red-500/20' : 'border-slate-600'}`}
+                                placeholder="輸入答案..."
+                                disabled={!!roomData.roundResult}
+                            />
+                            <button onClick={submitGuess} disabled={!!roomData.roundResult} className="bg-pink-500 hover:bg-pink-600 disabled:opacity-50 px-6 rounded-xl font-bold">送出</button>
                         </div>
                     )}
                 </div>
