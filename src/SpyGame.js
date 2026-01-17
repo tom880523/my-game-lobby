@@ -6,9 +6,9 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
-    Play, Settings, Plus, Check, X, Shuffle, ClipboardCopy, Trophy,
+    Play, Settings, Plus, Check, X, ClipboardCopy,
     ArrowLeft, LogOut, Trash2, Crown, Eye, EyeOff, Cloud, Download,
-    Library, Edit, Users, Vote, MessageCircle, SkipForward
+    Library, Users, Vote, MessageCircle, SkipForward
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
@@ -58,7 +58,6 @@ const DEFAULT_SETTINGS = {
 };
 
 const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
-const generateId = () => Math.random().toString(36).substring(2, 10);
 
 // =================================================================
 // 主元件
@@ -492,6 +491,7 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
     const roundLogs = roomData.roundLogs || [];
     const votes = roomData.votes || {};
     const pkPlayers = roomData.pkPlayers || [];
+    // eslint-disable-next-line no-unused-vars
     const isInPK = roomData.status === 'pk' && pkPlayers.includes(currentUser.uid);
 
     // 計算票數
@@ -715,9 +715,9 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
                                 key={p.id}
                                 onClick={() => (roomData.status === 'voting' || roomData.status === 'pk') && submitVote(p.id)}
                                 className={`p-3 rounded-xl border transition-all ${p.id === roomData.turnOrder[roomData.currentTurnIndex] ? 'bg-violet-500/30 border-violet-500 ring-2 ring-violet-400' :
-                                        selectedVote === p.id ? 'bg-red-500/30 border-red-500' :
-                                            votes[currentUser.uid] === p.id ? 'bg-orange-500/30 border-orange-500' :
-                                                'bg-slate-700 border-slate-600'
+                                    selectedVote === p.id ? 'bg-red-500/30 border-red-500' :
+                                        votes[currentUser.uid] === p.id ? 'bg-orange-500/30 border-orange-500' :
+                                            'bg-slate-700 border-slate-600'
                                     } ${(roomData.status === 'voting' || roomData.status === 'pk') && p.id !== currentUser.uid ? 'cursor-pointer hover:border-violet-400' : ''}`}
                             >
                                 <div className="flex justify-between items-center">
