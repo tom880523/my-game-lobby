@@ -56,7 +56,7 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
 
     // 遊戲標題設定
     useEffect(() => {
-        document.title = "比手畫腳大亂鬥 | Party Game";
+        document.title = "天生戲精 | Party Game";
     }, []);
 
     // 雙重保險：監聽登入狀態
@@ -298,13 +298,13 @@ function LobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, creat
             <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8 max-w-md w-full space-y-6 relative text-white">
                 <button onClick={onBack} className="absolute top-4 left-4 text-white/50 hover:text-white transition-colors"><ArrowLeft /></button>
                 <div className="text-center pt-6">
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 to-pink-500">比手畫腳</h1>
+                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 to-pink-500">天生戲精</h1>
                     <p className="text-white/60 text-sm mt-1">輸入名字與房間代碼開始</p>
                 </div>
                 <div className="space-y-4">
                     <div>
                         <label className="text-xs text-white/70 ml-1">你的名字</label>
-                        <input value={playerName} onChange={e => setPlayerName(e.target.value)} className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none placeholder-white/30 text-white" placeholder="例如：比手畫腳之神" />
+                        <input value={playerName} onChange={e => setPlayerName(e.target.value)} className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none placeholder-white/30 text-white" placeholder="例如：戲精代言人" />
                         {/* ★★★ 顯示 ID，方便除錯 ★★★ */}
                         {user && <div className="text-[10px] text-white/40 mt-1 text-right font-mono">ID: {user.uid.slice(0, 5)}...</div>}
                     </div>

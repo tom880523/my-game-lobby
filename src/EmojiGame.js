@@ -58,7 +58,7 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
 
     // 遊戲標題設定
     useEffect(() => {
-        document.title = "Emoji 猜詞語 | Party Game";
+        document.title = "表情密碼 | Party Game";
         console.log('[EmojiGame] 元件已載入');
     }, []);
 
@@ -423,7 +423,7 @@ function EmojiLobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, 
                 <div className="text-center pt-6">
                     <div className="text-6xl mb-4">🎯📝</div>
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 to-orange-500">
-                        Emoji 猜詞語
+                        表情密碼
                     </h1>
                     <p className="text-white/60 text-sm mt-1">看 Emoji 猜答案，搶答得分！</p>
                 </div>

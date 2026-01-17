@@ -255,7 +255,7 @@ function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, hand
               <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
                 <Users className="text-white w-8 h-8" />
               </div>
-              <h2 className="text-2xl font-bold mb-2 text-white">比手畫腳大亂鬥</h2>
+              <h2 className="text-2xl font-bold mb-2 text-white">天生戲精</h2>
               <p className="text-slate-400 text-sm">經典派對遊戲！內建豐富題庫、支援搶答、自訂多重隊伍與即時計分。</p>
             </div>
             <div className="flex items-center gap-2 text-indigo-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
@@ -275,7 +275,7 @@ function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, hand
               <div className="w-14 h-14 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
                 <span className="text-2xl">🎯</span>
               </div>
-              <h2 className="text-2xl font-bold mb-2 text-white">Emoji 猜詞語</h2>
+              <h2 className="text-2xl font-bold mb-2 text-white">表情密碼</h2>
               <p className="text-slate-400 text-sm">看 Emoji 猜答案！多人即時搶答，系統自動判定得分。</p>
             </div>
             <div className="flex items-center gap-2 text-yellow-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">
@@ -295,7 +295,7 @@ function GameLobby({ onSelectGame, user, isAdmin, authLoading, handleLogin, hand
               <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-cyan-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform">
                 <span className="text-2xl">🃏</span>
               </div>
-              <h2 className="text-2xl font-bold mb-2 text-white">記憶翻牌</h2>
+              <h2 className="text-2xl font-bold mb-2 text-white">極限記憶</h2>
               <p className="text-slate-400 text-sm">翻牌配對！考驗記憶力，配對成功可繼續翻牌。</p>
             </div>
             <div className="flex items-center gap-2 text-emerald-400 font-bold mt-6 group-hover:translate-x-2 transition-transform">

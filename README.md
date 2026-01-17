@@ -211,6 +211,12 @@ npm run build
 
 ### 更新歷史
 
+#### v11.4 (2026-01-18) - 遊戲名稱統一化 (四字風格)
+- ✅ **比手畫腳大亂鬥** → **天生戲精**
+- ✅ **Emoji 猜詞語** → **表情密碼**
+- ✅ **記憶翻牌** → **極限記憶**
+- 修改範圍：`App.js`, `CharadesGame.js`, `EmojiGame.js`, `MemoryGame.js`
+
 #### v11.3 (2026-01-18) - SpyGame 邏輯修正
 - ✅ **Bug 修復 - 投票分母計算**：
   - 移除 `alivePlayers.length - 1` 中的 `-1`

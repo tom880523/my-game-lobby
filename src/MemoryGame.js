@@ -63,7 +63,7 @@ export default function MemoryGame({ onBack, getNow, currentUser, isAdmin }) {
     };
 
     useEffect(() => {
-        document.title = "記憶翻牌 | Party Game";
+        document.title = "極限記憶 | Party Game";
         console.log('[MemoryGame] 元件已載入');
     }, []);
 
@@ -350,7 +350,7 @@ function MemoryLobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId,
                 <div className="text-center pt-6">
                     <div className="text-6xl mb-4">🃏🎴</div>
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-300 to-cyan-500">
-                        記憶翻牌
+                        極限記憶
                     </h1>
                     <p className="text-white/60 text-sm mt-1">翻牌配對，考驗你的記憶力！</p>
                 </div>
@@ -764,8 +764,8 @@ function MemoryRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
                                                 onClick={() => toggleDeck(deck.id)}
                                                 disabled={!isHost}
                                                 className={`w-5 h-5 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${deck.enabled !== false
-                                                        ? 'bg-emerald-500 border-emerald-500'
-                                                        : 'border-slate-500 bg-transparent'
+                                                    ? 'bg-emerald-500 border-emerald-500'
+                                                    : 'border-slate-500 bg-transparent'
                                                     } ${!isHost ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
                                                 title={deck.enabled !== false ? '已啟用 (點擊停用)' : '已停用 (點擊啟用)'}
                                             >
@@ -992,7 +992,7 @@ function MemoryCloudLibraryModal({ onClose, onImport, currentUser, isAdmin }) {
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
             <div className="bg-slate-800 w-full max-w-2xl max-h-[80vh] rounded-2xl p-6 border border-slate-700 flex flex-col">
                 <div className="flex justify-between items-center border-b border-slate-700 pb-4 mb-4">
-                    <h3 className="font-bold text-xl text-white flex items-center gap-2"><Cloud className="text-cyan-400" /> 記憶翻牌雲端題庫</h3>
+                    <h3 className="font-bold text-xl text-white flex items-center gap-2"><Cloud className="text-cyan-400" /> 極限記憶雲端題庫</h3>
                     <button onClick={onClose} className="text-slate-400 hover:text-white"><X /></button>
                 </div>
                 <div className="flex gap-2 mb-4">
