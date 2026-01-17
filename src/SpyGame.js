@@ -323,19 +323,27 @@ function SpyRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCurren
         if (allPairs.length === 0) return alert("請先新增題目！");
 
         const selectedPair = allPairs[Math.floor(Math.random() * allPairs.length)];
+
+        // ★★★ 50% 機率對調 A/B 詞彙，避免臥底總是拿到 B ★★★
+        const swapWords = Math.random() < 0.5;
+        const civilianWord = swapWords ? selectedPair.b : selectedPair.a;
+        const undercoverWord = swapWords ? selectedPair.a : selectedPair.b;
+        console.log('[SpyGame] 開始遊戲, 原始詞對:', selectedPair, '對調:', swapWords);
+
         const shuffled = [...players].sort(() => 0.5 - Math.random());
         const assignedPlayers = shuffled.map((p, i) => {
             let role, word;
-            if (i < settings.undercoverCount) { role = 'undercover'; word = selectedPair.b; }
+            if (i < settings.undercoverCount) { role = 'undercover'; word = undercoverWord; }
             else if (i < settings.undercoverCount + settings.whiteboardCount) { role = 'whiteboard'; word = null; }
-            else { role = 'civilian'; word = selectedPair.a; }
+            else { role = 'civilian'; word = civilianWord; }
             return { ...p, role, word, status: 'alive', hasDescribed: false };
         });
         const turnOrder = assignedPlayers.filter(p => p.status === 'alive').map(p => p.id).sort(() => 0.5 - Math.random());
 
-        console.log('[SpyGame] 開始遊戲, 詞對:', selectedPair);
+        // 存入已分配的詞彙，確保結算顯示正確
+        const assignedPair = { a: civilianWord, b: undercoverWord };
         await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), {
-            status: 'description', players: assignedPlayers, currentPair: selectedPair, currentRound: 1,
+            status: 'description', players: assignedPlayers, currentPair: assignedPair, currentRound: 1,
             turnOrder, currentTurnIndex: 0, roundLogs: [], votes: {}, pkPlayers: [], winner: null
         });
     };
@@ -882,10 +890,10 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
                                 </div>
                             )}
 
-                            {/* 主持人結算按鈕 */}
-                            {isHost && Object.keys(votes).length >= alivePlayers.length - 1 && (
+                            {/* 主持人結算按鈕 (所有存活玩家都投票後可結算) */}
+                            {isHost && (
                                 <button onClick={settleVotes} className="w-full py-3 bg-red-500 hover:bg-red-600 rounded-xl font-bold">
-                                    <Vote className="inline mr-2" /> 結算投票 ({Object.keys(votes).length}/{alivePlayers.length - 1} 已投票)
+                                    <Vote className="inline mr-2" /> 結算投票 ({Object.keys(votes).length}/{alivePlayers.length} 已投票)
                                 </button>
                             )}
                         </div>

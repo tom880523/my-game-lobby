@@ -211,6 +211,14 @@ npm run build
 
 ### 更新歷史
 
+#### v11.3 (2026-01-18) - SpyGame 邏輯修正
+- ✅ **Bug 修復 - 投票分母計算**：
+  - 移除 `alivePlayers.length - 1` 中的 `-1`
+  - 結算按鈕現在隨時可見，顯示正確的 X/Y 已投票人數
+- ✅ **詞彙隨機分配**：
+  - 50% 機率對調 A/B 詞彙 (`swapWords`)
+  - 存入 `currentPair: { a: civilianWord, b: undercoverWord }` 確保結算顯示正確
+
 #### v11.2 (2026-01-18) - SpyGame v2.1 體驗優化
 - ✅ **UI 調整**：遊戲規則從「大廳」移至「房間內」右側欄
 - ✅ **Bug 修復**：發言者高亮 (Ring) 只在「敘述階段」顯示，避免投票混淆
