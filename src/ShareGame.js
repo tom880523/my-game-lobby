@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     doc, setDoc, getDoc, onSnapshot, updateDoc,
     runTransaction, serverTimestamp,
@@ -485,6 +485,7 @@ function ShareRoomView({ roomData, isHost, roomId, currentUser, isAdmin }) {
 function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTime }) {
     const [showDesignateModal, setShowDesignateModal] = useState(false);
     const [nextSpeakerCandidate, setNextSpeakerCandidate] = useState(null); // 預約的下一位
+    const [displayCandidates, setDisplayCandidates] = useState([]); // 顯示用的隨機名單
 
     const turnOrder = roomData.turnOrder || [];
     const currentIndex = roomData.currentTurnIndex || 0;
@@ -497,17 +498,21 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
     const remainingPlayerIds = turnOrder.slice(currentIndex + 1);
     const remainingPlayers = remainingPlayerIds.map(id => roomData.players?.find(p => p.id === id)).filter(Boolean);
 
-    // ✨ 顯示用的隨機名單 (防止劇透真實順序)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const displayCandidates = useMemo(() => {
-        return [...remainingPlayers].sort(() => 0.5 - Math.random());
-    }, [currentIndex, turnOrder.length]); // 只有當回合或玩家數改變時才重新洗牌
-
-    // ★ 回合改變時重置預約 (防卡死)
+    // ✨ 回合改變時：重新洗牌顯示名單 + 重置預約
     useEffect(() => {
+        // 在 useEffect 內部計算，避免外部依賴問題
+        const currentRemainingIds = turnOrder.slice(currentIndex + 1);
+        const currentRemainingPlayers = currentRemainingIds
+            .map(id => roomData.players?.find(p => p.id === id))
+            .filter(Boolean);
+
+        // 打亂順序 (防止劇透真實順序)
+        const shuffled = [...currentRemainingPlayers].sort(() => 0.5 - Math.random());
+        setDisplayCandidates(shuffled);
+        // 重置預約
         setNextSpeakerCandidate(null);
-        console.log("[ShareGame] Turn changed, reset candidate");
-    }, [roomData.currentTurnIndex]);
+        console.log("[ShareGame] Turn changed, shuffled candidates, reset reservation");
+    }, [currentIndex, turnOrder, roomData.players]);
 
     // 預約的玩家資訊
     const candidatePlayer = nextSpeakerCandidate

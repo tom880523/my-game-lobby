@@ -227,14 +227,20 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v12.3 ShareGame Hide Real Order
+**目前版本**: v12.4 ShareGame Linter Fix
 
 ### 更新歷史
 
+#### v12.4 (2026-01-18) - ESLint 修正 for Vercel Deploy
+- ✅ **ShareGame.js Linter 修復**：
+  - 原問題：`useMemo` 缺少 `remainingPlayers` 依賴導致 Vercel 部署失敗
+  - 解決方案：將計算邏輯移入 `useEffect` 內部，避免外部依賴
+  - 移除 `eslint-disable-next-line` 註解，改為正確的依賴陣列 `[currentIndex, turnOrder, roomData.players]`
+
 #### v12.3 (2026-01-18) - 隱藏真實順序
 - ✅ **防劇透**：「指定下一位」Modal 候選人名單改為隨機排序
-  - 使用 `useMemo` + `displayCandidates` 實作
-  - 依賴 `currentIndex` 與 `turnOrder.length`，換人時才重新洗牌
+  - 使用 `useState` + `useEffect` + `displayCandidates` 實作
+  - 依賴 `currentIndex` 與 `turnOrder`，換人時才重新洗牌
 
 #### v12.2 (2026-01-18) - 權限修正 + 預約制指定
 - ✅ **權限修正**：「瀏覽雲端題庫」按鈕限主持人可見
