@@ -227,9 +227,15 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v12.4 ShareGame Linter Fix
+**目前版本**: v12.5 ShareGame Stable Dependencies
 
 ### 更新歷史
+
+#### v12.5 (2026-01-18) - useEffect 依賴穩定性修復
+- ✅ **ShareGame.js 依賴穩定性修復**：
+  - 原問題：`turnOrder = roomData.turnOrder || []` 每次渲染產生新陣列，導致 `useEffect` 依賴不穩定
+  - 解決方案：使用 `useMemo` 包裹 `turnOrder`，確保陣列參照穩定
+  - 新增 `useMemo` 到 React imports
 
 #### v12.4 (2026-01-18) - ESLint 修正 for Vercel Deploy
 - ✅ **ShareGame.js Linter 修復**：

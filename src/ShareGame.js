@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     doc, setDoc, getDoc, onSnapshot, updateDoc,
     runTransaction, serverTimestamp,
@@ -487,7 +487,8 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
     const [nextSpeakerCandidate, setNextSpeakerCandidate] = useState(null); // 預約的下一位
     const [displayCandidates, setDisplayCandidates] = useState([]); // 顯示用的隨機名單
 
-    const turnOrder = roomData.turnOrder || [];
+    // 使用 useMemo 穩定 turnOrder 依賴，避免每次渲染產生新陣列
+    const turnOrder = useMemo(() => roomData.turnOrder || [], [roomData.turnOrder]);
     const currentIndex = roomData.currentTurnIndex || 0;
     const currentSpeakerId = turnOrder[currentIndex];
     const currentSpeaker = roomData.players?.find(p => p.id === currentSpeakerId);
