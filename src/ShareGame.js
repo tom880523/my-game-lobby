@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     doc, setDoc, getDoc, onSnapshot, updateDoc,
     runTransaction, serverTimestamp,
@@ -497,6 +497,12 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
     const remainingPlayerIds = turnOrder.slice(currentIndex + 1);
     const remainingPlayers = remainingPlayerIds.map(id => roomData.players?.find(p => p.id === id)).filter(Boolean);
 
+    // ✨ 顯示用的隨機名單 (防止劇透真實順序)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const displayCandidates = useMemo(() => {
+        return [...remainingPlayers].sort(() => 0.5 - Math.random());
+    }, [currentIndex, turnOrder.length]); // 只有當回合或玩家數改變時才重新洗牌
+
     // ★ 回合改變時重置預約 (防卡死)
     useEffect(() => {
         setNextSpeakerCandidate(null);
@@ -597,10 +603,10 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
                         </div>
                         <p className="text-xs text-stone-500 mb-3">選擇後將在按下「下一位」時生效</p>
                         <div className="space-y-2 max-h-60 overflow-y-auto">
-                            {remainingPlayers.length === 0 ? (
+                            {displayCandidates.length === 0 ? (
                                 <div className="text-center text-stone-400 py-4">沒有剩餘的玩家</div>
                             ) : (
-                                remainingPlayers.map(p => (
+                                displayCandidates.map(p => (
                                     <button key={p.id} onClick={() => reserveNextSpeaker(p.id)}
                                         className="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-amber-50 rounded-xl border border-stone-200 hover:border-amber-300 transition">
                                         <span className="font-medium text-stone-700">{p.name}</span>
