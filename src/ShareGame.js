@@ -263,7 +263,7 @@ function ShareLobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, 
                     <div>
                         <label className="text-xs text-stone-400 ml-1">你的名字</label>
                         <input value={playerName} onChange={e => setPlayerName(e.target.value)}
-                            className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:ring-2 focus:ring-amber-500/50 outline-none placeholder-stone-500 text-white"
+                            className="w-full px-4 py-3 bg-amber-900/30 border border-white/10 rounded-xl focus:ring-2 focus:ring-amber-500/50 outline-none placeholder-stone-500 text-white"
                             placeholder="怎麼稱呼你？" />
                         {user && <div className="text-[10px] text-stone-500 mt-1 text-right font-mono">ID: {user.uid.slice(0, 5)}...</div>}
                     </div>
@@ -277,7 +277,7 @@ function ShareLobbyView({ onBack, playerName, setPlayerName, roomId, setRoomId, 
                     </div>
                     <div className="flex gap-2">
                         <input value={roomId} onChange={e => setRoomId(e.target.value.toUpperCase())}
-                            className="flex-1 px-4 py-3 bg-black/30 border border-white/10 rounded-xl uppercase text-center font-mono tracking-widest placeholder-stone-500 text-white"
+                            className="flex-1 px-4 py-3 bg-amber-900/30 border border-white/10 rounded-xl uppercase text-center font-mono tracking-widest placeholder-stone-500 text-white"
                             placeholder="房間 ID" />
                         <button onClick={joinRoom} disabled={loading || !user}
                             className="px-6 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-xl font-bold transition">
@@ -450,10 +450,12 @@ function ShareRoomView({ roomData, isHost, roomId, currentUser, isAdmin }) {
                         </div>
                     )}
 
-                    {/* 雲端題庫 */}
-                    <button onClick={() => setShowCloudLibrary(true)} className="w-full mt-4 flex items-center justify-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-600 py-2 rounded-xl font-medium transition">
-                        <Cloud size={18} /> 瀏覽雲端題庫
-                    </button>
+                    {/* 雲端題庫 (僅主持人可見) */}
+                    {isHost && (
+                        <button onClick={() => setShowCloudLibrary(true)} className="w-full mt-4 flex items-center justify-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-600 py-2 rounded-xl font-medium transition">
+                            <Cloud size={18} /> 瀏覽雲端題庫
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -479,9 +481,10 @@ function ShareRoomView({ roomData, isHost, roomId, currentUser, isAdmin }) {
     );
 }
 
-// ★★★ 遊戲介面 (Stone Theme + Designate Feature) ★★★
+// ★★★ 遊戲介面 (Stone Theme + Reservation Logic v2.1) ★★★
 function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTime }) {
     const [showDesignateModal, setShowDesignateModal] = useState(false);
+    const [nextSpeakerCandidate, setNextSpeakerCandidate] = useState(null); // 預約的下一位
 
     const turnOrder = roomData.turnOrder || [];
     const currentIndex = roomData.currentTurnIndex || 0;
@@ -494,6 +497,17 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
     const remainingPlayerIds = turnOrder.slice(currentIndex + 1);
     const remainingPlayers = remainingPlayerIds.map(id => roomData.players?.find(p => p.id === id)).filter(Boolean);
 
+    // ★ 回合改變時重置預約 (防卡死)
+    useEffect(() => {
+        setNextSpeakerCandidate(null);
+        console.log("[ShareGame] Turn changed, reset candidate");
+    }, [roomData.currentTurnIndex]);
+
+    // 預約的玩家資訊
+    const candidatePlayer = nextSpeakerCandidate
+        ? roomData.players?.find(p => p.id === nextSpeakerCandidate)
+        : null;
+
     const randomQuestion = async () => {
         if (!isSpeaker && !isHost) return;
         const newQ = questionPool[Math.floor(Math.random() * questionPool.length)];
@@ -501,42 +515,66 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
         console.log("[ShareGame] Changed question");
     };
 
+    // ★★★ 下一位 (含交換邏輯) ★★★
     const nextSpeaker = async () => {
         if (!isSpeaker && !isHost) return;
+
         const nextIndex = currentIndex + 1;
         if (nextIndex >= turnOrder.length) {
             await updateDoc(doc(db, 'share_rooms', `room_${roomId}`), { status: 'finished' });
             return;
         }
+
         const newQ = questionPool[Math.floor(Math.random() * questionPool.length)];
-        await updateDoc(doc(db, 'share_rooms', `room_${roomId}`), { currentTurnIndex: nextIndex, currentQuestion: newQ });
-        console.log("[ShareGame] Next speaker:", nextIndex);
-    };
 
-    // ★★★ 指定下一位 (Swap Logic) ★★★
-    const designateNextSpeaker = async (targetId) => {
-        if (!isSpeaker && !isHost) return;
+        // 若有預約候選人，執行交換
+        if (nextSpeakerCandidate) {
+            const targetIndex = turnOrder.indexOf(nextSpeakerCandidate);
 
-        const targetIndex = turnOrder.indexOf(targetId);
-        const nextIndex = currentIndex + 1;
+            // 驗證候選人仍在後續順序中
+            if (targetIndex > currentIndex && targetIndex !== nextIndex) {
+                const newTurnOrder = [...turnOrder];
+                const temp = newTurnOrder[nextIndex];
+                newTurnOrder[nextIndex] = newTurnOrder[targetIndex];
+                newTurnOrder[targetIndex] = temp;
 
-        if (targetIndex <= currentIndex || targetIndex === nextIndex) {
-            setShowDesignateModal(false);
-            return;
+                // 原子操作：同時更新 turnOrder, currentTurnIndex, currentQuestion
+                await updateDoc(doc(db, 'share_rooms', `room_${roomId}`), {
+                    turnOrder: newTurnOrder,
+                    currentTurnIndex: nextIndex,
+                    currentQuestion: newQ
+                });
+                console.log("[ShareGame] Swapped and advanced to:", nextSpeakerCandidate);
+            } else {
+                // 候選人已是下一位或已失效，直接前進
+                await updateDoc(doc(db, 'share_rooms', `room_${roomId}`), {
+                    currentTurnIndex: nextIndex,
+                    currentQuestion: newQ
+                });
+            }
+        } else {
+            // 無預約，直接下一位
+            await updateDoc(doc(db, 'share_rooms', `room_${roomId}`), {
+                currentTurnIndex: nextIndex,
+                currentQuestion: newQ
+            });
+            console.log("[ShareGame] Next speaker:", nextIndex);
         }
 
-        // 交換位置
-        const newTurnOrder = [...turnOrder];
-        const temp = newTurnOrder[nextIndex];
-        newTurnOrder[nextIndex] = newTurnOrder[targetIndex];
-        newTurnOrder[targetIndex] = temp;
+        // 本地重置 (useEffect 也會觸發，這裡是備援)
+        setNextSpeakerCandidate(null);
+    };
 
-        await updateDoc(doc(db, 'share_rooms', `room_${roomId}`), { turnOrder: newTurnOrder });
-
-        const targetPlayer = roomData.players?.find(p => p.id === targetId);
-        alert(`已指定「${targetPlayer?.name}」為下一位分享者！`);
+    // ★★★ 預約下一位 (僅本地設定) ★★★
+    const reserveNextSpeaker = (targetId) => {
+        setNextSpeakerCandidate(targetId);
         setShowDesignateModal(false);
-        console.log("[ShareGame] Designated next speaker:", targetId);
+        console.log("[ShareGame] Reserved next speaker:", targetId);
+    };
+
+    const cancelReservation = () => {
+        setNextSpeakerCandidate(null);
+        console.log("[ShareGame] Reservation cancelled");
     };
 
     const endGame = async () => {
@@ -553,19 +591,20 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
                     <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-lg text-stone-700 flex items-center gap-2">
-                                <UserPlus size={20} className="text-amber-600" /> 指定下一位分享者
+                                <UserPlus size={20} className="text-amber-600" /> 選擇下一位分享者
                             </h3>
                             <button onClick={() => setShowDesignateModal(false)}><X className="text-stone-400 hover:text-stone-600" /></button>
                         </div>
+                        <p className="text-xs text-stone-500 mb-3">選擇後將在按下「下一位」時生效</p>
                         <div className="space-y-2 max-h-60 overflow-y-auto">
                             {remainingPlayers.length === 0 ? (
                                 <div className="text-center text-stone-400 py-4">沒有剩餘的玩家</div>
                             ) : (
                                 remainingPlayers.map(p => (
-                                    <button key={p.id} onClick={() => designateNextSpeaker(p.id)}
+                                    <button key={p.id} onClick={() => reserveNextSpeaker(p.id)}
                                         className="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-amber-50 rounded-xl border border-stone-200 hover:border-amber-300 transition">
                                         <span className="font-medium text-stone-700">{p.name}</span>
-                                        <span className="text-xs text-stone-400">點擊指定</span>
+                                        <span className="text-xs text-stone-400">點擊選擇</span>
                                     </button>
                                 ))
                             )}
@@ -596,6 +635,14 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
                         </div>
                     </div>
 
+                    {/* 預約提示 */}
+                    {candidatePlayer && (
+                        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                            <span className="text-amber-700 font-medium">👆 已預約下一位：{candidatePlayer.name}</span>
+                            <button onClick={cancelReservation} className="text-amber-500 hover:text-amber-700 text-sm underline">取消</button>
+                        </div>
+                    )}
+
                     {/* 操作按鈕 */}
                     <div className="flex gap-3">
                         <button onClick={randomQuestion}
@@ -608,11 +655,11 @@ function ShareGameInterface({ roomData, isHost, roomId, currentUser, getCurrentT
                         </button>
                     </div>
 
-                    {/* 指定下一位按鈕 (只在有剩餘玩家時顯示) */}
-                    {remainingPlayers.length > 0 && (
+                    {/* 指定下一位按鈕 (只在有剩餘玩家且無預約時顯示) */}
+                    {remainingPlayers.length > 0 && !candidatePlayer && (
                         <button onClick={() => setShowDesignateModal(true)}
                             className="w-full py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl font-medium flex items-center justify-center gap-2 transition border border-amber-200">
-                            <UserPlus size={18} /> 👆 指定下一位
+                            <UserPlus size={18} /> 指定下一位
                         </button>
                     )}
                 </div>

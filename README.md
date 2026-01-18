@@ -227,9 +227,17 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v12.1 ShareGame UI Refinement
+**目前版本**: v12.2 ShareGame Permission & Reservation Fix
 
 ### 更新歷史
+
+#### v12.2 (2026-01-18) - 權限修正 + 預約制指定
+- ✅ **權限修正**：「瀏覽雲端題庫」按鈕限主持人可見
+- ✅ **UI 微調**：Lobby 輸入框 `bg-black/30` → `bg-amber-900/30` 暖色調
+- ✅ **指定功能重構**：改為「本地預約制」
+  - 選擇後僅顯示預約提示，不立即寫入 Firestore
+  - 按「下一位」時才執行交換 + 原子操作更新
+  - `useEffect` 監聽回合變化，自動重置預約
 
 #### v12.1 (2026-01-18) - ShareGame 護眼配色 + 指定下一位
 - ✅ **UI 重構**：高飽和度 Amber/Orange → 低飽和度 Stone 暖灰色系
