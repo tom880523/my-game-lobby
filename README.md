@@ -6,7 +6,7 @@
 
 ## 📋 專案概述
 
-這是一個 **單頁應用程式 (SPA)**，提供多款派對遊戲，目前已上線五款遊戲：「比手畫腳大亂鬥」、「Emoji 猜成語」、「記憶翻牌」、「靈魂畫手」與「諜影行動」。
+這是一個 **單頁應用程式 (SPA)**，提供多款派對遊戲，目前已上線六款遊戲：「天生戲精」、「表情密碼」、「極限記憶」、「靈魂畫手」、「諜影行動」與「心靈共鳴」。
 
 ### 技術架構
 
@@ -32,7 +32,8 @@ Game Lobby Modify By Antigravity/
 │   ├── EmojiGame.js         # Emoji 猜成語遊戲主元件
 │   ├── MemoryGame.js        # 記憶翻牌遊戲主元件
 │   ├── SketchGame.js        # 靈魂畫手遊戲主元件
-│   ├── SpyGame.js           # 諜影行動遊戲主元件 [NEW]
+│   ├── SpyGame.js           # 諜影行動遊戲主元件
+│   ├── ShareGame.js         # 心靈共鳴遊戲主元件 [NEW]
 │   ├── firebase.js          # Firebase 配置與初始化
 │   ├── FirebaseMonitor.js   # Firebase 效能監控工具 [NEW]
 │   ├── dbOperations.js      # 統一 Firebase 函式匯出 [NEW]
@@ -40,6 +41,8 @@ Game Lobby Modify By Antigravity/
 │   ├── index.css            # 全域樣式 (Tailwind 引入)
 │   ├── words.js             # 比手畫腳題庫 (2000+ 題目)
 │   ├── emojiData.js         # Emoji 猜成語題庫 (80+ 題目)
+│   ├── spyData.js           # 諜影行動詞對題庫
+│   ├── shareData.js         # 心靈共鳴問題題庫 (50題) [NEW]
 │   └── 題庫EX/              # CSV 格式題庫擴充檔
 │       ├── Food.csv
 │       ├── 動物與昆蟲.csv
@@ -146,6 +149,19 @@ Game Lobby Modify By Antigravity/
 | **得分設定**   | Phase 1 答對 3 分 / Phase 2 答對 1 分       |
 | **題庫系統**   | 共用 Charades 題庫、支援自訂                 |
 
+### 6. 心靈共鳴 (Soul Resonance) [NEW]
+
+輪流分享的深度交流遊戲，拉近玩家距離：
+
+| 功能           | 說明                                      |
+|:--------------|:-----------------------------------------|
+| **房間系統**   | 建立/加入房間、房主權限管理                  |
+| **分享機制**   | 隨機決定順序，輪流成為分享者                 |
+| **題庫系統**   | 內建 50 題破冰與深度交流、雲端題庫 (上傳僅 Admin) |
+| **分享者視圖** | 顯示題目卡片、換題、下一位按鈕               |
+| **傾聽者視圖** | 顯示目前題目、呼吸燈動畫營造專注感           |
+| **UI 風格**   | 琥珀色/暖橘色主調，溫暖治癒氛圍              |
+
 ---
 
 ## 🔧 環境需求
@@ -201,15 +217,28 @@ npm run build
 | `emoji_cloud_decks` | Emoji 雲端共享題庫         |
 | `memory_rooms`      | 記憶翻牌遊戲房間資料      |
 | `memory_cloud_decks`| 記憶翻牌雲端共享題庫      |
-| `sketch_rooms`      | 靈魂畫手遊戲房間資料 [NEW] |
+| `sketch_rooms`      | 靈魂畫手遊戲房間資料      |
+| `spy_rooms`         | 諜影行動遊戲房間資料      |
+| `spy_cloud_decks`   | 諜影行動雲端題庫          |
+| `share_rooms`       | 心靈共鳴遊戲房間資料 [NEW] |
+| `share_cloud_decks` | 心靈共鳴雲端題庫 [NEW]     |
 
 ---
 
 ## 📝 版本資訊
 
-**目前版本**: v10.0 Soul Painter (靈魂畫手)
+**目前版本**: v12.0 ShareGame (心靈共鳴)
 
 ### 更新歷史
+
+#### v12.0 (2026-01-18) - 心靈共鳴 (Share Game)
+- ✅ **全新遊戲**：心靈共鳴 - 輪流分享的社交破冰遊戲
+- ✅ **遊戲流程**：隨機決定順序 → 分享者回答題目 → 傾聽者專注聆聽 → 下一位
+- ✅ **題庫系統**：
+  - 內建 50 題 (輕鬆破冰/情感回憶/價值觀/未來展望)
+  - 自訂題庫 + 雲端題庫 (`share_cloud_decks`)
+- ✅ **UI 風格**：琥珀色/暖橘色主調，營造溫暖治癒氛圍
+- ✅ **檔案新增**：`shareData.js`, `ShareGame.js`
 
 #### v11.4 (2026-01-18) - 遊戲名稱統一化 (四字風格)
 - ✅ **比手畫腳大亂鬥** → **天生戲精**
