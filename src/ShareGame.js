@@ -9,7 +9,7 @@ import {
     Users, Play, Plus, Check, X,
     ClipboardCopy,
     ArrowLeft, LogOut, Trash2, Crown,
-    Cloud, Download, Library, Edit,
+    Cloud, Download, Library, Edit, FileText,
     HeartHandshake, Mic, Headphones, SkipForward, RefreshCw, UserPlus
 } from 'lucide-react';
 
@@ -878,6 +878,35 @@ function ShareDeckEditorModal({ deck, setDeck, roomId, customDecks, isHost, isAd
         }
     };
 
+    // ★ CSV/TXT 檔案匯入功能
+    const handleCSVUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        console.log("[ShareDeckEditor] CSV upload started:", file.name);
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            const text = evt.target.result;
+            // 支援逗號或換行分隔
+            const newQuestions = text.split(/[,\n\r]+/).map(q => q.trim()).filter(q => q.length > 0);
+            console.log("[ShareDeckEditor] Parsed questions:", newQuestions.length);
+            if (newQuestions.length === 0) return alert("檔案內沒有內容");
+
+            const updatedDecks = customDecks.map(d => {
+                if (d.id === deck.id) {
+                    const uniqueQuestions = [...new Set([...d.questions, ...newQuestions])];
+                    return { ...d, questions: uniqueQuestions };
+                }
+                return d;
+            });
+
+            await updateDoc(doc(db, 'share_rooms', `room_${roomId}`), { customQuestionDecks: updatedDecks });
+            setDeck(updatedDecks.find(d => d.id === deck.id));
+            console.log("[ShareDeckEditor] CSV import successful");
+            alert(`已匯入 ${newQuestions.length} 個題目`);
+        };
+        reader.readAsText(file);
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
@@ -894,6 +923,10 @@ function ShareDeckEditorModal({ deck, setDeck, roomId, customDecks, isHost, isAd
                         className="flex-1 border border-stone-200 p-2 rounded-lg text-sm text-stone-700" placeholder="輸入新題目..."
                         onKeyDown={e => e.key === 'Enter' && addQuestion()} />
                     <button onClick={addQuestion} className="bg-stone-600 text-white px-3 rounded-lg"><Plus /></button>
+                    <label className="cursor-pointer bg-stone-100 hover:bg-stone-200 text-stone-600 px-3 rounded-lg flex items-center justify-center transition" title="讀取 CSV/TXT 檔案">
+                        <FileText size={18} />
+                        <input type="file" accept=".csv,.txt" onChange={handleCSVUpload} className="hidden" />
+                    </label>
                 </div>
 
                 {isHost && isAdmin && (
