@@ -132,7 +132,7 @@ Game Lobby Modify By Antigravity/
 |:--------------|:-----------------------------------------|
 | **房間系統**   | 建立/加入房間、房主權限管理                  |
 | **隊伍模式**   | 多隊伍支援、**個人賽模式 (一人一隊)**         |
-| **題庫系統**   | 內建 48 Emoji、**雲端分享 (上傳僅 Admin)**   |
+| **題庫系統**   | 內建 56 Emoji、**雲端分享 (上傳僅 Admin)**   |
 | **網格大小**   | 4x4 (8對) / 6x6 (18對)                    |
 | **Bonus Turn** | 配對成功可繼續翻牌                          |
 | **即時同步**   | 所有玩家即時看到翻牌結果                    |
@@ -227,9 +227,17 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v12.6 ShareGame CSV Import
+**目前版本**: v12.7 MemoryGame 題庫顯示修正
 
 ### 更新歷史
+
+#### v12.7 (2026-01-21) - MemoryGame 題庫數量顯示修正
+- ✅ **Bug 修復 - SettingsModal 題庫計算**：
+  - 原問題：`availablePairs` 固定計算 `DEFAULT_EMOJI_PAIRS.length`，未檢查 `useDefaultEmojis` 是否啟用
+  - 修正後：正確計算只有「啟用中」的題庫數量
+  - 自訂題庫也檢查 `enabled !== false` 狀態
+- ✅ **題庫擴充**：內建 Emoji 題庫從 48 題擴充至 56 題
+- ✅ **Debug Log**：設定頁面新增可用題庫數量日誌
 
 #### v12.6 (2026-01-19) - ShareDeckEditorModal CSV 匯入功能
 - ✅ **新增 CSV/TXT 檔案匯入**：`ShareDeckEditorModal` 元件新增讀取檔案功能

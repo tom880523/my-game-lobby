@@ -1485,7 +1485,21 @@ function MemoryResultView({ roomData, isHost, roomId }) {
 // =================================================================
 function MemorySettingsModal({ localSettings, setLocalSettings, setShowSettings, roomData, onSave }) {
     const updateSetting = (key, value) => setLocalSettings(prev => ({ ...prev, [key]: value }));
-    const availablePairs = DEFAULT_EMOJI_PAIRS.length + (roomData.customDecks || []).reduce((acc, d) => acc + (d.pairs?.length || 0), 0);
+    
+    // ★ 修正：正確計算啟用中的題庫數量
+    const availablePairs = (() => {
+        let count = 0;
+        // 檢查內建題庫是否啟用
+        if (roomData.useDefaultEmojis !== false) {
+            count += DEFAULT_EMOJI_PAIRS.length;
+        }
+        // 只計算啟用的自訂題庫
+        (roomData.customDecks || []).forEach(d => {
+            if (d.enabled !== false) count += (d.pairs?.length || 0);
+        });
+        console.log('[MemorySettingsModal] 可用題庫數:', count, '(內建:', DEFAULT_EMOJI_PAIRS.length, ')');
+        return count;
+    })();
 
     const gridRows = localSettings.gridRows || 4;
     const gridCols = localSettings.gridCols || 4;
