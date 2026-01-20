@@ -415,7 +415,7 @@ function ShareRoomView({ roomData, isHost, roomId, currentUser, isAdmin }) {
                                 {roomData.useDefaultQuestions !== false && <Check size={14} className="text-white" />}
                             </div>
                             <div>
-                                <div className="font-bold text-stone-700">內建題庫 (50題)</div>
+                                <div className="font-bold text-stone-700">內建題庫 (約100題)</div>
                                 <div className="text-xs text-stone-500">破冰、情感、價值觀、未來展望</div>
                             </div>
                         </div>
