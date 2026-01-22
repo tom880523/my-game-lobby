@@ -83,7 +83,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
             }
         });
         return () => unsubscribe();
-    }, [user, roomId, view]);
+    }, [user, roomId, view, isSpectator]);  // ✨ 新增 isSpectator 依賴
 
     const checkAndLeaveOldRoom = async (uid, newRoomId) => {
         try {
