@@ -33,7 +33,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
     const [playerName, setPlayerName] = useState('');
     const [roomData, setRoomData] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [isSpectator, setIsSpectator] = useState(false);  // ★ 觀戰者狀態
+
 
     const getCurrentTime = useCallback(() => {
         if (typeof getNow === 'function') return getNow();
@@ -67,9 +67,9 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
 
                 const amIInRoom = data.players?.some(p => p.id === user.uid);
                 // ★ 觀戰者保護：不要踢出觀戰者
-                if (!amIInRoom && !isSpectator && view !== 'lobby') {
+                if (!amIInRoom && view !== 'lobby') {
                     alert("你已被踢出房間或房間已重置");
-                    setView('lobby'); setRoomData(null); setIsSpectator(false); return;
+                    setView('lobby'); setRoomData(null); return;
                 }
 
                 // ★ 斷線重連修復：只要玩家在名單中，就根據遊戲狀態切換畫面
@@ -83,7 +83,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
             }
         });
         return () => unsubscribe();
-    }, [user, roomId, view, isSpectator]);  // ✨ 新增 isSpectator 依賴
+    }, [user, roomId, view]);
 
     const checkAndLeaveOldRoom = async (uid, newRoomId) => {
         try {
@@ -158,7 +158,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
             const rId = roomId.toUpperCase();
             await checkAndLeaveOldRoom(user.uid, rId);
             const roomRef = doc(db, 'share_rooms', `room_${rId}`);
-            let isSpectator = false;
+
 
             await runTransaction(db, async (transaction) => {
                 const roomDoc = await transaction.get(roomRef);
@@ -185,7 +185,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
             });
 
             console.log("[ShareGame] Joined room:", rId);
-            setIsSpectator(false);  // 重置觀戰狀態
+
             setRoomId(rId);
             setView('room');
         } catch (e) {
@@ -214,7 +214,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
         setView('lobby');
         setRoomId('');
         setRoomData(null);
-        setIsSpectator(false);
+
     };
 
     if (view === 'lobby') {

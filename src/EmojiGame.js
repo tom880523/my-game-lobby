@@ -47,7 +47,7 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
     const [playerName, setPlayerName] = useState('');
     const [roomData, setRoomData] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [isSpectator, setIsSpectator] = useState(false);  // ★ 觀戰者狀態
+
     const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -91,11 +91,11 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
                 // 檢查是否被踢出
                 const amIInRoom = data.players && data.players.some(p => p.id === user.uid);
                 // ★ 觀戰者保護：不要踢出觀戰者
-                if (!amIInRoom && !isSpectator && view !== 'lobby') {
+                if (!amIInRoom && view !== 'lobby') {
                     alert("你已被踢出房間或房間已重置");
                     setView('lobby');
                     setRoomData(null);
-                    setIsSpectator(false);
+
                     return;
                 }
 
@@ -110,7 +110,7 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
             }
         });
         return () => unsubscribe();
-    }, [user, roomId, view, isSpectator]);  // ✨ 新增 isSpectator 依賴
+    }, [user, roomId, view]);
 
     // 檢查並離開舊房間
     const checkAndLeaveOldRoom = async (uid, newRoomId) => {
@@ -205,7 +205,7 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
             await checkAndLeaveOldRoom(user.uid, rId);
 
             const roomRef = doc(db, 'emoji_rooms', `emoji_room_${rId}`);
-            let isSpectator = false;
+
 
             await runTransaction(db, async (transaction) => {
                 const roomDoc = await transaction.get(roomRef);
@@ -234,7 +234,7 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
             });
 
             console.log('[EmojiGame] 成功加入房間');
-            setIsSpectator(false);  // 重置觀戰狀態
+
             setRoomId(rId);
             setView('room');
         } catch (e) {
@@ -266,7 +266,7 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
         setView('lobby');
         setRoomId('');
         setRoomData(null);
-        setIsSpectator(false);
+
     };
 
     // 開始遊戲

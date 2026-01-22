@@ -44,7 +44,7 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
     const [playerName, setPlayerName] = useState('');
     const [roomData, setRoomData] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [isSpectator, setIsSpectator] = useState(false);  // ★ 觀戰者狀態
+
     const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
     const [showSettings, setShowSettings] = useState(false);
     const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
@@ -83,11 +83,11 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
 
                 const amIInRoom = data.players && data.players.some(p => p.id === user.uid);
                 // ★ 觀戰者保護：不要踢出觀戰者
-                if (!amIInRoom && !isSpectator && view !== 'lobby') {
+                if (!amIInRoom && view !== 'lobby') {
                     alert("你已被踢出房間或房間已重置");
                     setView('lobby');
                     setRoomData(null);
-                    setIsSpectator(false);
+
                     return;
                 }
 
@@ -102,7 +102,7 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
             }
         });
         return () => unsubscribe();
-    }, [user, roomId, view, isSpectator]);  // ✨ 新增 isSpectator 依賴
+    }, [user, roomId, view]);
 
     // ★★★ 檢查並離開舊房間 ★★★
     const checkAndLeaveOldRoom = async (uid, newRoomId) => {
@@ -190,7 +190,7 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
             await checkAndLeaveOldRoom(user.uid, rId);
 
             const roomRef = doc(db, 'rooms', `room_${rId}`);
-            let isSpectator = false;
+
 
             await runTransaction(db, async (transaction) => {
                 const roomDoc = await transaction.get(roomRef);
@@ -218,7 +218,7 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
                 transaction.update(roomRef, { players: newPlayersList });
             });
 
-            setIsSpectator(false);  // 重置觀戰狀態
+
             setRoomId(rId);
             setView('room');
         } catch (e) {
@@ -242,7 +242,7 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
                 else await updateDoc(ref, { players: newPlayers });
             }
         } catch (e) { console.error("Leave error", e); }
-        setView('lobby'); setRoomId(''); setRoomData(null); setIsSpectator(false);
+        setView('lobby'); setRoomId(''); setRoomData(null);
     };
 
     if (view === 'lobby') return <LobbyView onBack={onBack} playerName={playerName} setPlayerName={setPlayerName} roomId={roomId} setRoomId={setRoomId} createRoom={createRoom} joinRoom={joinRoom} loading={loading} user={user} />;

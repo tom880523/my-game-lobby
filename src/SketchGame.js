@@ -45,7 +45,7 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
     const [playerName, setPlayerName] = useState('');
     const [roomData, setRoomData] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [isSpectator, setIsSpectator] = useState(false);  // ★ 觀戰者狀態
+
     const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -73,8 +73,8 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
                 setRoomData(data);
                 const amIInRoom = data.players?.some(p => p.id === user.uid);
                 // ★ 觀戰者保護：不要踢出觀戰者
-                if (!amIInRoom && !isSpectator && view !== 'lobby') {
-                    alert("你已被踢出房間"); setView('lobby'); setRoomData(null); setIsSpectator(false); return;
+                if (!amIInRoom && view !== 'lobby') {
+                    alert("你已被踢出房間"); setView('lobby'); setRoomData(null); return;
                 }
                 // ★ 斷線重連修復：只要玩家在名單中，就根據遊戲狀態切換畫面
                 if (data.status === 'playing' && amIInRoom) setView('game');
@@ -85,7 +85,7 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
             }
         });
         return () => unsubscribe();
-    }, [user, roomId, view, isSpectator]);  // ✨ 新增 isSpectator 依賴
+    }, [user, roomId, view]);
 
     const checkAndLeaveOldRoom = async (uid, newRoomId) => {
         try {
@@ -141,7 +141,7 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
             const rId = roomId.toUpperCase();
             await checkAndLeaveOldRoom(user.uid, rId);
             const roomRef = doc(db, 'sketch_rooms', `sketch_room_${rId}`);
-            let isSpectator = false;
+
 
             await runTransaction(db, async (transaction) => {
                 const roomDoc = await transaction.get(roomRef);
@@ -168,7 +168,7 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
             });
 
             console.log('[SketchGame] 加入房間:', rId);
-            setIsSpectator(false);  // 重置觀戰狀態
+
             setRoomId(rId); setView('room');
         } catch (e) { console.error(e); alert("加入失敗: " + e.message); }
         setLoading(false);
@@ -186,7 +186,7 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
                 else await updateDoc(ref, { players: newPlayers });
             }
         } catch (e) { console.error("Leave error", e); }
-        setView('lobby'); setRoomId(''); setRoomData(null); setIsSpectator(false);  // ★ 重置觀戰狀態
+        setView('lobby'); setRoomId(''); setRoomData(null);
     };
 
     if (view === 'lobby') return <SketchLobbyView onBack={onBack} playerName={playerName} setPlayerName={setPlayerName} roomId={roomId} setRoomId={setRoomId} createRoom={createRoom} joinRoom={joinRoom} loading={loading} user={user} />;
