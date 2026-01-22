@@ -599,7 +599,12 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const [guess, setGuess] = useState('');
     const [timeLeft, setTimeLeft] = useState(0);
     const [showWrong, setShowWrong] = useState(false);
-    const [hasSwapped, setHasSwapped] = useState(false);  // ★ 換題狀態（每回合限一次）
+    const [hasSwapped, setHasSwapped] = useState(false); // ★ 換題限制狀態
+
+    // ★ 監聽題目改變，重置換題狀態
+    useEffect(() => {
+        setHasSwapped(false);
+    }, [roomData?.currentWord]);  // ★ 換題狀態（每回合限一次）
     const lastPosRef = useRef({ x: 0, y: 0 });
     const snapshotSentRef = useRef({ phase1: false, phase2: false, phase3: false });
 
@@ -809,7 +814,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
             currentWord: nextWord,
             phase: 1,
             phaseEndTime: now + roomData.settings.phase1Time * 1000,
-            canvasImage: null,
+            canvasImage: null,  // ★ 清除上一局圖片資料
             canvasVisibility: 'drawer',
             roundResult: null,  // 清除過場資料
             [`drawerIndices.${nextTeam.id}`]: nextDrawerIdx
@@ -891,8 +896,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 </div>
             )}
 
-            {/* 頂部資訊 */}
-            <div className="flex justify-between items-center mb-4">
+            {/* 頂部資訊 - 手機版隱藏，電腦版顯示 */}
+            <div className="hidden md:flex justify-between items-center mb-4">
                 <div className="flex items-center gap-4">
                     {teams.map(t => (
                         <div key={t.id} className={`px-4 py-2 rounded-xl ${t.id === roomData.currentTeamId ? 'ring-2 ring-white' : ''}`} style={{ backgroundColor: `${t.color}40` }}>
@@ -907,7 +912,6 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         <span className="font-bold text-xl">{roomData.currentRound}</span>
                         <span className="text-slate-400">/ {roomData.settings.totalRounds * teams.length}</span>
                     </div>
-                    {/* ★★★ 主持人提前結算按鈕 ★★★ */}
                     {isHost && (
                         <button onClick={forceEnd} className="px-4 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-xl text-sm font-bold">
                             提前結算
@@ -922,7 +926,21 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 <div className="md:col-span-2 bg-slate-800 rounded-2xl p-4">
                     {/* 倒數計時 */}
                     <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-2">
+                        {/* 手機版簡化計時器 */}
+                        <div className="md:hidden flex items-center justify-between w-full">
+                            <div className="flex items-center gap-2">
+                                <span className={`px-2 py-1 rounded-lg text-xs font-bold ${roomData.phase === 1 ? 'bg-slate-500' : roomData.phase === 2 ? 'bg-blue-500' : 'bg-orange-500'}`}>
+                                    P{roomData.phase}
+                                </span>
+                                {isDrawer && <span className="text-pink-400 font-bold truncate max-w-[120px]">{roomData.currentWord}</span>}
+                            </div>
+                            <div className={`text-2xl font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : ''}`}>
+                                {timeLeft}
+                            </div>
+                        </div>
+
+                        {/* 電腦版完整計時器 */}
+                        <div className="hidden md:flex items-center gap-2">
                             <span className={`px-3 py-1 rounded-full text-sm font-bold ${roomData.phase === 1 ? 'bg-slate-500' : roomData.phase === 2 ? 'bg-blue-500' : 'bg-orange-500'}`}>
                                 Phase {roomData.phase}
                             </span>
@@ -930,7 +948,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 {roomData.phase === 1 ? '繪圖中...' : roomData.phase === 2 ? '隊友猜題中' : '全員搶答！'}
                             </span>
                         </div>
-                        <div className={`text-3xl font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : ''}`}>
+                        <div className={`hidden md:block text-3xl font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : ''}`}>
                             {timeLeft}s
                         </div>
                     </div>
@@ -962,20 +980,22 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 <button onClick={() => setIsEraser(!isEraser)} className={`p-2 rounded-lg transition ${isEraser ? 'bg-pink-500' : 'bg-slate-700 hover:bg-slate-600'}`}><Eraser size={20} /></button>
                                 <button onClick={clearCanvas} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg"><RotateCcw size={20} /></button>
                             </div>
-                            {/* Canvas - 響應式設計：手機佔滿寬度，電腦維持比例 */}
-                            <canvas
-                                ref={canvasRef}
-                                width={800}
-                                height={600}
-                                onMouseDown={startDraw}
-                                onMouseMove={draw}
-                                onMouseUp={stopDraw}
-                                onMouseLeave={stopDraw}
-                                onTouchStart={startDraw}
-                                onTouchMove={draw}
-                                onTouchEnd={stopDraw}
-                                className="w-full bg-white rounded-xl cursor-crosshair touch-none aspect-[4/3] max-h-[80vh]"  /* ★ 提高至 80vh */
-                            />
+                            {/* Canvas - ★ 手機版強制 70vh 高度 */}
+                            <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white h-[70vh] md:h-[500px]">
+                                <canvas
+                                    ref={canvasRef}
+                                    width={800}
+                                    height={600}
+                                    onMouseDown={startDraw}
+                                    onMouseMove={draw}
+                                    onMouseUp={stopDraw}
+                                    onMouseLeave={stopDraw}
+                                    onTouchStart={startDraw}
+                                    onTouchMove={draw}
+                                    onTouchEnd={stopDraw}
+                                    className="w-full h-full cursor-crosshair touch-none"
+                                />
+                            </div>
                         </>
                     )}
 
