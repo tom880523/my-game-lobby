@@ -33,6 +33,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
     const [playerName, setPlayerName] = useState('');
     const [roomData, setRoomData] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [isSpectator, setIsSpectator] = useState(false);  // ★ 觀戰者狀態
 
     const getCurrentTime = useCallback(() => {
         if (typeof getNow === 'function') return getNow();
@@ -65,11 +66,10 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
                 console.log("[ShareGame] Room data updated:", data.status);
 
                 const amIInRoom = data.players?.some(p => p.id === user.uid);
-                if (!amIInRoom && view !== 'lobby') {
+                // ★ 觀戰者保護：不要踢出觀戰者
+                if (!amIInRoom && !isSpectator && view !== 'lobby') {
                     alert("你已被踢出房間或房間已重置");
-                    setView('lobby');
-                    setRoomData(null);
-                    return;
+                    setView('lobby'); setRoomData(null); setIsSpectator(false); return;
                 }
 
                 // ★ 斷線重連修復：只要玩家在名單中，就根據遊戲狀態切換畫面
@@ -187,7 +187,12 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
             });
 
             console.log("[ShareGame] Joined room:", rId, isSpectator ? '(觀戰模式)' : '');
-            if (isSpectator) alert("遊戲進行中，您以觀戰模式加入");
+            if (isSpectator) {
+                setIsSpectator(true);
+                alert("遊戲進行中，您以觀戰模式加入");
+            } else {
+                setIsSpectator(false);
+            }
             setRoomId(rId);
             setView('room');
         } catch (e) {
@@ -216,6 +221,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
         setView('lobby');
         setRoomId('');
         setRoomData(null);
+        setIsSpectator(false);
     };
 
     if (view === 'lobby') {

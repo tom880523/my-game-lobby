@@ -47,6 +47,7 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
     const [playerName, setPlayerName] = useState('');
     const [roomData, setRoomData] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [isSpectator, setIsSpectator] = useState(false);  // ★ 觀戰者狀態
     const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -89,10 +90,12 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
 
                 // 檢查是否被踢出
                 const amIInRoom = data.players && data.players.some(p => p.id === user.uid);
-                if (!amIInRoom && view !== 'lobby') {
+                // ★ 觀戰者保護：不要踢出觀戰者
+                if (!amIInRoom && !isSpectator && view !== 'lobby') {
                     alert("你已被踢出房間或房間已重置");
                     setView('lobby');
                     setRoomData(null);
+                    setIsSpectator(false);
                     return;
                 }
 
@@ -233,7 +236,12 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
             });
 
             console.log('[EmojiGame] 成功加入房間', isSpectator ? '(觀戰模式)' : '');
-            if (isSpectator) alert("遊戲進行中，您以觀戰模式加入");
+            if (isSpectator) {
+                setIsSpectator(true);
+                alert("遊戲進行中，您以觀戰模式加入");
+            } else {
+                setIsSpectator(false);
+            }
             setRoomId(rId);
             setView('room');
         } catch (e) {
@@ -265,6 +273,7 @@ export default function EmojiGame({ onBack, getNow, currentUser, isAdmin }) {
         setView('lobby');
         setRoomId('');
         setRoomData(null);
+        setIsSpectator(false);
     };
 
     // 開始遊戲

@@ -45,6 +45,7 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
     const [playerName, setPlayerName] = useState('');
     const [roomData, setRoomData] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [isSpectator, setIsSpectator] = useState(false);  // ★ 觀戰者狀態
     const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -71,8 +72,9 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
                 const data = docSnap.data();
                 setRoomData(data);
                 const amIInRoom = data.players?.some(p => p.id === user.uid);
-                if (!amIInRoom && view !== 'lobby') {
-                    alert("你已被踢出房間"); setView('lobby'); setRoomData(null); return;
+                // ★ 觀戰者保護：不要踢出觀戰者
+                if (!amIInRoom && !isSpectator && view !== 'lobby') {
+                    alert("你已被踢出房間"); setView('lobby'); setRoomData(null); setIsSpectator(false); return;
                 }
                 // ★ 斷線重連修復：只要玩家在名單中，就根據遊戲狀態切換畫面
                 if (data.status === 'playing' && amIInRoom) setView('game');
@@ -167,7 +169,12 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
             });
 
             console.log('[SketchGame] 加入房間:', rId, isSpectator ? '(觀戰模式)' : '');
-            if (isSpectator) alert("遊戲進行中，您以觀戰模式加入");
+            if (isSpectator) {
+                setIsSpectator(true);  // ★ 記錄觀戰者狀態
+                alert("遊戲進行中，您以觀戰模式加入");
+            } else {
+                setIsSpectator(false);
+            }
             setRoomId(rId); setView('room');
         } catch (e) { console.error(e); alert("加入失敗: " + e.message); }
         setLoading(false);
@@ -185,7 +192,7 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
                 else await updateDoc(ref, { players: newPlayers });
             }
         } catch (e) { console.error("Leave error", e); }
-        setView('lobby'); setRoomId(''); setRoomData(null);
+        setView('lobby'); setRoomId(''); setRoomData(null); setIsSpectator(false);  // ★ 重置觀戰狀態
     };
 
     if (view === 'lobby') return <SketchLobbyView onBack={onBack} playerName={playerName} setPlayerName={setPlayerName} roomId={roomId} setRoomId={setRoomId} createRoom={createRoom} joinRoom={joinRoom} loading={loading} user={user} />;
@@ -973,7 +980,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 onTouchStart={startDraw}
                                 onTouchMove={draw}
                                 onTouchEnd={stopDraw}
-                                className="w-full bg-white rounded-xl cursor-crosshair touch-none aspect-[4/3] max-h-[55vh] md:max-h-[60vh]"
+                                className="w-full bg-white rounded-xl cursor-crosshair touch-none aspect-[4/3] max-h-[80vh]"  /* ★ 提高至 80vh */
                             />
                         </>
                     )}

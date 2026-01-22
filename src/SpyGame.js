@@ -600,7 +600,8 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
         const aliveWhiteboards = aliveAfter.filter(p => p.role === 'whiteboard').length;
 
         let winner = null;
-        if (aliveUndercovers === 0 && aliveWhiteboards === 0) {
+        // ★ 白板與平民同一隊，只需臥底為 0
+        if (aliveUndercovers === 0) {
             winner = 'civilian'; // 平民獲勝
         } else if (aliveUndercovers >= aliveCivilians + aliveWhiteboards) {
             winner = 'undercover'; // 臥底獲勝
@@ -649,7 +650,8 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
         const aliveWhiteboards = aliveAfter.filter(p => p.role === 'whiteboard').length;
 
         let winner = null;
-        if (aliveUndercovers === 0 && aliveWhiteboards === 0) {
+        // ★ 白板與平民同一隊，只需臥底為 0
+        if (aliveUndercovers === 0) {
             winner = 'civilian'; // 平民獲勝
         } else if (aliveUndercovers >= aliveCivilians + aliveWhiteboards) {
             winner = 'undercover'; // 臥底獲勝

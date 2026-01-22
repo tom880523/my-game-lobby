@@ -227,9 +227,26 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v12.8 穩定性與體驗全面優化
+**目前版本**: v12.8.2 觀戰者保護 + Canvas 擴大
 
 ### 更新歷史
+
+#### v12.8.2 (2026-01-23) - 觀戰者保護 + 靈魂畫手 Canvas 擴大
+- ✅ **觀戰者保護邏輯強化**：
+  - 新增 `isSpectator` state 追蹤觀戰者狀態
+  - `onSnapshot` 踢人邏輯加入 `!isSpectator` 檢查，避免誤踢觀戰者
+  - `leaveRoom` 重置 `isSpectator` 狀態
+  - 影響範圍：5 個遊戲（SketchGame, MemoryGame, CharadesGame, EmojiGame, ShareGame）
+- ✅ **靈魂畫手 Canvas 擴大**：
+  - Canvas max-height 從 55vh/60vh 提升至 80vh（幾乎全螢幕）
+  - 手機與電腦都能獲得更大的繪圖空間
+
+#### v12.8.1 (2026-01-22) - SpyGame 勝負判定修復
+- ✅ **Bug 修復 - 白板陣營判定**：
+  - 原問題：當臥底被淘汰但白板還活著時，遊戲不會結束（平民不會獲勝）
+  - 根本原因：勝負判定邏輯要求 `aliveUndercovers === 0 && aliveWhiteboards === 0` 才算平民獲勝
+  - 修正：白板屬於平民陣營，只需 `aliveUndercovers === 0` 即可判定平民獲勝
+  - 影響範圍：`eliminatePlayer` 與 `resolvePK` 兩處勝負判定邏輯
 
 #### v12.8 (2026-01-22) - 斷線重連 + 靈魂畫手優化 + 極限記憶修復 + 觀戰模式
 - ✅ **全域修復 - 斷線重連機制**：

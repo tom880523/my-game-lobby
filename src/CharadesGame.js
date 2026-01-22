@@ -44,6 +44,7 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
     const [playerName, setPlayerName] = useState('');
     const [roomData, setRoomData] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [isSpectator, setIsSpectator] = useState(false);  // ★ 觀戰者狀態
     const [localSettings, setLocalSettings] = useState(DEFAULT_SETTINGS);
     const [showSettings, setShowSettings] = useState(false);
     const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
@@ -79,11 +80,14 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
                 const data = docSnap.data();
                 setRoomData(data);
 
+
                 const amIInRoom = data.players && data.players.some(p => p.id === user.uid);
-                if (!amIInRoom && view !== 'lobby') {
+                // ★ 觀戰者保護：不要踢出觀戰者
+                if (!amIInRoom && !isSpectator && view !== 'lobby') {
                     alert("你已被踢出房間或房間已重置");
                     setView('lobby');
                     setRoomData(null);
+                    setIsSpectator(false);
                     return;
                 }
 
@@ -216,7 +220,12 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
                 transaction.update(roomRef, { players: newPlayersList });
             });
 
-            if (isSpectator) alert("遊戲進行中，您以觀戰模式加入");
+            if (isSpectator) {
+                setIsSpectator(true);
+                alert("遊戲進行中，您以觀戰模式加入");
+            } else {
+                setIsSpectator(false);
+            }
             setRoomId(rId);
             setView('room');
         } catch (e) {
@@ -240,7 +249,7 @@ export default function CharadesGame({ onBack, getNow, currentUser, isAdmin }) {
                 else await updateDoc(ref, { players: newPlayers });
             }
         } catch (e) { console.error("Leave error", e); }
-        setView('lobby'); setRoomId(''); setRoomData(null);
+        setView('lobby'); setRoomId(''); setRoomData(null); setIsSpectator(false);
     };
 
     if (view === 'lobby') return <LobbyView onBack={onBack} playerName={playerName} setPlayerName={setPlayerName} roomId={roomId} setRoomId={setRoomId} createRoom={createRoom} joinRoom={joinRoom} loading={loading} user={user} />;
