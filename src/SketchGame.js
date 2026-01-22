@@ -601,10 +601,10 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const [showWrong, setShowWrong] = useState(false);
     const [hasSwapped, setHasSwapped] = useState(false); // ★ 換題限制狀態
 
-    // ★ 監聽題目改變，重置換題狀態
+    // ★ 監聽畫家改變，重置換題狀態
     useEffect(() => {
         setHasSwapped(false);
-    }, [roomData?.currentWord]);  // ★ 換題狀態（每回合限一次）
+    }, [roomData?.currentDrawerId]);  // ★ 只有換畫家時才重置，避免換題時重置
     const lastPosRef = useRef({ x: 0, y: 0 });
     const snapshotSentRef = useRef({ phase1: false, phase2: false, phase3: false });
 
