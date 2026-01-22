@@ -8,7 +8,7 @@ import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
     Play, Settings, Plus, Check, X, Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown, Palette, Eraser, RotateCcw, Edit,
-    Cloud, Download, Library, RefreshCw
+    Cloud, Download, Library
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
@@ -594,17 +594,11 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const [isDrawing, setIsDrawing] = useState(false);
     const [brushColor, setBrushColor] = useState('#000000');
     // eslint-disable-next-line no-unused-vars
-    const [brushSize] = useState(5);
+    const [strokeWidth, setStrokeWidth] = useState(4);
     const [isEraser, setIsEraser] = useState(false);
     const [guess, setGuess] = useState('');
     const [timeLeft, setTimeLeft] = useState(0);
     const [showWrong, setShowWrong] = useState(false);
-    const [hasSwapped, setHasSwapped] = useState(false); // ★ 換題限制狀態
-
-    // ★ 監聽畫家改變，重置換題狀態
-    useEffect(() => {
-        setHasSwapped(false);
-    }, [roomData?.currentDrawerId]);  // ★ 只有換畫家時才重置，避免換題時重置
     const lastPosRef = useRef({ x: 0, y: 0 });
     const snapshotSentRef = useRef({ phase1: false, phase2: false, phase3: false });
 
@@ -699,7 +693,6 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     // 重置 Snapshot flag + 換題狀態
     useEffect(() => {
         snapshotSentRef.current = { phase1: false, phase2: false, phase3: false };
-        setHasSwapped(false);  // ★ 每回合重置換題狀態
         console.log('[SketchGame] 新回合，重置換題狀態');
     }, [roomData.currentWord]);
 
@@ -745,7 +738,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
         ctx.lineTo(x, y);
         ctx.strokeStyle = isEraser ? '#FFFFFF' : brushColor;
-        ctx.lineWidth = isEraser ? 20 : brushSize;
+        ctx.lineWidth = strokeWidth;
         ctx.lineCap = 'round';
         ctx.stroke();
 
@@ -762,26 +755,6 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     };
 
-    // ★★★ 換一題功能（每回合限用一次）★★★
-    const swapWord = async () => {
-        if (!isDrawer || hasSwapped) return;
-        const queue = roomData.wordQueue || [];
-        if (queue.length === 0) {
-            alert('題庫已用完，無法換題！');
-            return;
-        }
-        const oldWord = roomData.currentWord;
-        const newWord = queue[0];
-        const newQueue = [...queue.slice(1), oldWord]; // 舊題放到陣列底部
-
-        console.log('[SketchGame] 換題:', oldWord, '->', newWord);
-        setHasSwapped(true);
-
-        await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
-            currentWord: newWord,
-            wordQueue: newQueue
-        });
-    };
 
     // 換下一題
     const nextRound = async (correct, answerTeamId = null) => {
@@ -960,17 +933,6 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                             <div className="flex items-center justify-center gap-3 mb-4 flex-wrap">
                                 <span className="text-slate-400">你的題目：</span>
                                 <span className="text-2xl font-bold text-pink-400">{roomData.currentWord}</span>
-                                {/* ★ 換一題按鈕（Phase 1 限用一次）*/}
-                                {roomData.phase === 1 && (
-                                    <button
-                                        onClick={swapWord}
-                                        disabled={hasSwapped}
-                                        className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm font-medium transition ${hasSwapped ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-pink-500/20 text-pink-400 hover:bg-pink-500/30'}`}
-                                    >
-                                        <RefreshCw size={14} />
-                                        {hasSwapped ? '已換題' : '換一題'}
-                                    </button>
-                                )}
                             </div>
                             {/* 工具列 */}
                             <div className="flex justify-center gap-2 mb-4 flex-wrap">
@@ -979,6 +941,18 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 ))}
                                 <button onClick={() => setIsEraser(!isEraser)} className={`p-2 rounded-lg transition ${isEraser ? 'bg-pink-500' : 'bg-slate-700 hover:bg-slate-600'}`}><Eraser size={20} /></button>
                                 <button onClick={clearCanvas} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg"><RotateCcw size={20} /></button>
+
+                                {/* 筆刷粗細滑桿 */}
+                                <div className="flex items-center gap-2 px-2 border-l border-slate-600 ml-2">
+                                    <div className="w-2 h-2 rounded-full bg-slate-400" style={{ transform: `scale(${strokeWidth / 4})` }} />
+                                    <input
+                                        type="range"
+                                        min="1" max="20"
+                                        value={strokeWidth}
+                                        onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
+                                        className="w-20 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                </div>
                             </div>
                             {/* Canvas - ★ 手機版強制 70vh 高度 */}
                             <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white h-[70vh] md:h-[500px]">
