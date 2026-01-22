@@ -151,11 +151,10 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
                 const playerIndex = currentPlayers.findIndex(p => p.id === user.uid);
                 const isExistingPlayer = playerIndex >= 0;
 
-                // ★ 觀戰模式：遊戲中新玩家無法加入 players
+
+                // ★ 阻擋中途加入：遊戲進行中的新玩家無法加入
                 if (data.status !== 'waiting' && !isExistingPlayer) {
-                    console.log('[SketchGame] 觀戰模式加入:', rId);
-                    isSpectator = true;
-                    return; // 不更新 players 列表
+                    throw new Error("遊戲已經開始，請等待下一局！");
                 }
 
                 let newPlayersList;
@@ -168,13 +167,8 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
                 transaction.update(roomRef, { players: newPlayersList });
             });
 
-            console.log('[SketchGame] 加入房間:', rId, isSpectator ? '(觀戰模式)' : '');
-            if (isSpectator) {
-                setIsSpectator(true);  // ★ 記錄觀戰者狀態
-                alert("遊戲進行中，您以觀戰模式加入");
-            } else {
-                setIsSpectator(false);
-            }
+            console.log('[SketchGame] 加入房間:', rId);
+            setIsSpectator(false);  // 重置觀戰狀態
             setRoomId(rId); setView('room');
         } catch (e) { console.error(e); alert("加入失敗: " + e.message); }
         setLoading(false);

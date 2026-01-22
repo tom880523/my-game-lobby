@@ -168,11 +168,9 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
                 const playerIndex = currentPlayers.findIndex(p => p.id === user.uid);
                 const isExistingPlayer = playerIndex >= 0;
 
-                // ★ 觀戰模式：遊戲中新玩家無法加入 players
+                // ★ 阻擋中途加入：遊戲進行中的新玩家無法加入
                 if (data.status !== 'waiting' && !isExistingPlayer) {
-                    console.log('[ShareGame] 觀戰模式加入:', rId);
-                    isSpectator = true;
-                    return;
+                    throw new Error("遊戲已經開始，請等待下一局！");
                 }
 
                 const newPlayer = { id: user.uid, name: playerName, isHost: false };
@@ -186,13 +184,8 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
                 transaction.update(roomRef, { players: newPlayersList });
             });
 
-            console.log("[ShareGame] Joined room:", rId, isSpectator ? '(觀戰模式)' : '');
-            if (isSpectator) {
-                setIsSpectator(true);
-                alert("遊戲進行中，您以觀戰模式加入");
-            } else {
-                setIsSpectator(false);
-            }
+            console.log("[ShareGame] Joined room:", rId);
+            setIsSpectator(false);  // 重置觀戰狀態
             setRoomId(rId);
             setView('room');
         } catch (e) {
