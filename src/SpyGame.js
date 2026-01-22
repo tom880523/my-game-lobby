@@ -64,9 +64,10 @@ export default function SpyGame({ onBack, getNow, currentUser, isAdmin }) {
                 if (!amIInRoom && view !== 'lobby') {
                     alert("你已被踢出房間"); setView('lobby'); setRoomData(null); return;
                 }
-                if (data.status === 'waiting' && (view === 'game' || view === 'result')) setView('room');
-                if (['description', 'voting', 'pk'].includes(data.status) && view === 'room') setView('game');
-                if (data.status === 'finished' && view === 'game') setView('result');
+                // ★ 斷線重連修復：只要玩家在名單中，就根據遊戲狀態切換畫面
+                if (data.status === 'waiting' && amIInRoom && view !== 'lobby') setView('room');
+                if (['description', 'voting', 'pk'].includes(data.status) && amIInRoom) setView('game');
+                if (data.status === 'finished' && amIInRoom) setView('result');
             } else if (view !== 'lobby') {
                 alert("房間已關閉"); setView('lobby'); setRoomData(null);
             }

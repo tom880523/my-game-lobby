@@ -8,7 +8,7 @@ import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
     Play, Settings, Plus, Check, X, Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown, Palette, Eraser, RotateCcw, Edit,
-    Cloud, Download, Library
+    Cloud, Download, Library, RefreshCw
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
@@ -18,9 +18,9 @@ import { DEFAULT_WORDS_LARGE } from './words';
 // 預設設定
 // =================================================================
 const DEFAULT_SETTINGS = {
-    phase1Time: 20,
-    phase2Time: 20,
-    phase3Time: 20,  // 全員搶答時間
+    phase1Time: 30,
+    phase2Time: 30,
+    phase3Time: 40,  // 全員搶答時間
     totalRounds: 5,
     pointsPhase1: 3,  // 隊友猜對 (Phase 2)
     pointsPhase2: 1,  // 全員搶答 (Phase 3)
@@ -74,9 +74,10 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
                 if (!amIInRoom && view !== 'lobby') {
                     alert("你已被踢出房間"); setView('lobby'); setRoomData(null); return;
                 }
-                if (data.status === 'playing' && view === 'room') setView('game');
-                if (data.status === 'finished' && view === 'game') setView('result');
-                if (data.status === 'waiting' && (view === 'game' || view === 'result')) setView('room');
+                // ★ 斷線重連修復：只要玩家在名單中，就根據遊戲狀態切換畫面
+                if (data.status === 'playing' && amIInRoom) setView('game');
+                if (data.status === 'finished' && amIInRoom) setView('result');
+                if (data.status === 'waiting' && amIInRoom && view !== 'lobby') setView('room');
             } else if (view !== 'lobby') {
                 alert("房間已關閉"); setView('lobby'); setRoomData(null);
             }
@@ -138,14 +139,25 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
             const rId = roomId.toUpperCase();
             await checkAndLeaveOldRoom(user.uid, rId);
             const roomRef = doc(db, 'sketch_rooms', `sketch_room_${rId}`);
+            let isSpectator = false;
+
             await runTransaction(db, async (transaction) => {
                 const roomDoc = await transaction.get(roomRef);
                 if (!roomDoc.exists()) throw new Error("房間不存在");
                 const data = roomDoc.data();
                 const currentPlayers = data.players || [];
                 const playerIndex = currentPlayers.findIndex(p => p.id === user.uid);
+                const isExistingPlayer = playerIndex >= 0;
+
+                // ★ 觀戰模式：遊戲中新玩家無法加入 players
+                if (data.status !== 'waiting' && !isExistingPlayer) {
+                    console.log('[SketchGame] 觀戰模式加入:', rId);
+                    isSpectator = true;
+                    return; // 不更新 players 列表
+                }
+
                 let newPlayersList;
-                if (playerIndex >= 0) {
+                if (isExistingPlayer) {
                     newPlayersList = [...currentPlayers];
                     newPlayersList[playerIndex] = { ...newPlayersList[playerIndex], name: playerName };
                 } else {
@@ -153,7 +165,9 @@ export default function SketchGame({ onBack, getNow, currentUser, isAdmin }) {
                 }
                 transaction.update(roomRef, { players: newPlayersList });
             });
-            console.log('[SketchGame] 加入房間:', rId);
+
+            console.log('[SketchGame] 加入房間:', rId, isSpectator ? '(觀戰模式)' : '');
+            if (isSpectator) alert("遊戲進行中，您以觀戰模式加入");
             setRoomId(rId); setView('room');
         } catch (e) { console.error(e); alert("加入失敗: " + e.message); }
         setLoading(false);
@@ -400,7 +414,8 @@ function SketchRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
             status: 'playing', wordQueue: shuffledWords.slice(1), scores: initialScores,
             currentRound: 1, currentTeamId: firstTeam.id, currentDrawerId: firstDrawer,
             currentWord: shuffledWords[0], phase: 1, phaseEndTime: now + roomData.settings.phase1Time * 1000,
-            canvasImage: null, canvasVisibility: 'drawer', turnOrder, drawerIndices: { [firstTeam.id]: 0 }
+            canvasImage: null, canvasVisibility: 'drawer', turnOrder, drawerIndices: { [firstTeam.id]: 0 },
+            roundResult: null  // ★ 強制重置，避免舊資料干擾
         });
     };
 
@@ -583,6 +598,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const [guess, setGuess] = useState('');
     const [timeLeft, setTimeLeft] = useState(0);
     const [showWrong, setShowWrong] = useState(false);
+    const [hasSwapped, setHasSwapped] = useState(false);  // ★ 換題狀態（每回合限一次）
     const lastPosRef = useRef({ x: 0, y: 0 });
     const snapshotSentRef = useRef({ phase1: false, phase2: false, phase3: false });
 
@@ -648,6 +664,12 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
             // Phase 3 結束 → 寫入過場畫面 (由主持人 useEffect 負責換題)
             if (roomData.phase === 3 && remaining <= 0 && !snapshotSentRef.current.phase3) {
+                // ★ 如果已有人答對，不要覆蓋 roundResult
+                if (roomData.roundResult) {
+                    console.log('[SketchGame] Phase 3 結束，但已有 roundResult，跳過無人答對寫入');
+                    snapshotSentRef.current.phase3 = true;
+                    return;
+                }
                 snapshotSentRef.current.phase3 = true;
                 console.log('[SketchGame] Phase 3 結束, 無人答對');
                 // 寫入過場資料 (無人答對)
@@ -668,9 +690,11 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isDrawer, roomData.phase, roomData.phaseEndTime]);
 
-    // 重置 Snapshot flag
+    // 重置 Snapshot flag + 換題狀態
     useEffect(() => {
         snapshotSentRef.current = { phase1: false, phase2: false, phase3: false };
+        setHasSwapped(false);  // ★ 每回合重置換題狀態
+        console.log('[SketchGame] 新回合，重置換題狀態');
     }, [roomData.currentWord]);
 
     // ★★★ 主持人專用：監聽 roundResult 並換題 ★★★
@@ -730,6 +754,27 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+    };
+
+    // ★★★ 換一題功能（每回合限用一次）★★★
+    const swapWord = async () => {
+        if (!isDrawer || hasSwapped) return;
+        const queue = roomData.wordQueue || [];
+        if (queue.length === 0) {
+            alert('題庫已用完，無法換題！');
+            return;
+        }
+        const oldWord = roomData.currentWord;
+        const newWord = queue[0];
+        const newQueue = [...queue.slice(1), oldWord]; // 舊題放到陣列底部
+
+        console.log('[SketchGame] 換題:', oldWord, '->', newWord);
+        setHasSwapped(true);
+
+        await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
+            currentWord: newWord,
+            wordQueue: newQueue
+        });
     };
 
     // 換下一題
@@ -892,9 +937,21 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                     {/* 繪圖者視角 */}
                     {isDrawer && (
                         <>
-                            <div className="text-center mb-4">
+                            {/* 題目顯示 + 換題按鈕 */}
+                            <div className="flex items-center justify-center gap-3 mb-4 flex-wrap">
                                 <span className="text-slate-400">你的題目：</span>
-                                <span className="text-2xl font-bold text-pink-400 ml-2">{roomData.currentWord}</span>
+                                <span className="text-2xl font-bold text-pink-400">{roomData.currentWord}</span>
+                                {/* ★ 換一題按鈕（Phase 1 限用一次）*/}
+                                {roomData.phase === 1 && (
+                                    <button
+                                        onClick={swapWord}
+                                        disabled={hasSwapped}
+                                        className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm font-medium transition ${hasSwapped ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-pink-500/20 text-pink-400 hover:bg-pink-500/30'}`}
+                                    >
+                                        <RefreshCw size={14} />
+                                        {hasSwapped ? '已換題' : '換一題'}
+                                    </button>
+                                )}
                             </div>
                             {/* 工具列 */}
                             <div className="flex justify-center gap-2 mb-4 flex-wrap">
@@ -904,8 +961,20 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 <button onClick={() => setIsEraser(!isEraser)} className={`p-2 rounded-lg transition ${isEraser ? 'bg-pink-500' : 'bg-slate-700 hover:bg-slate-600'}`}><Eraser size={20} /></button>
                                 <button onClick={clearCanvas} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg"><RotateCcw size={20} /></button>
                             </div>
-                            {/* Canvas */}
-                            <canvas ref={canvasRef} width={600} height={400} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw} onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={stopDraw} className="w-full bg-white rounded-xl cursor-crosshair touch-none" style={{ maxHeight: '60vh' }} />
+                            {/* Canvas - 響應式設計：手機佔滿寬度，電腦維持比例 */}
+                            <canvas
+                                ref={canvasRef}
+                                width={800}
+                                height={600}
+                                onMouseDown={startDraw}
+                                onMouseMove={draw}
+                                onMouseUp={stopDraw}
+                                onMouseLeave={stopDraw}
+                                onTouchStart={startDraw}
+                                onTouchMove={draw}
+                                onTouchEnd={stopDraw}
+                                className="w-full bg-white rounded-xl cursor-crosshair touch-none aspect-[4/3] max-h-[55vh] md:max-h-[60vh]"
+                            />
                         </>
                     )}
 

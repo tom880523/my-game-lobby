@@ -227,9 +227,29 @@ npm run build
 
 ## 📝 版本資訊
 
-**目前版本**: v12.7 MemoryGame 題庫顯示修正
+**目前版本**: v12.8 穩定性與體驗全面優化
 
 ### 更新歷史
+
+#### v12.8 (2026-01-22) - 斷線重連 + 靈魂畫手優化 + 極限記憶修復 + 觀戰模式
+- ✅ **全域修復 - 斷線重連機制**：
+  - 原問題：玩家在遊戲進行中重整網頁後無法回到遊戲畫面（view 狀態為 'lobby'）
+  - 修正邏輯：`onSnapshot` 改為檢查 `amIInRoom` 而非 `view === 'room'`，確保玩家重整後自動切換回遊戲並可繼續遊玩
+  - 影響範圍：所有 6 個遊戲（SketchGame, MemoryGame, CharadesGame, EmojiGame, SpyGame, ShareGame）
+- ✅ **靈魂畫手專項優化**：
+  - **新局初始化 Bug**：`startGame` 強制重置 `roundResult: null`，避免閃現上局結果
+  - **預設時間調整**：Phase 1/2/3 從 20s 改為 30s/30s/40s，給予更充裕時間
+  - **畫板放大**：canvas 從 600x400 升級至 800x600，使用響應式設計（`aspect-[4/3]`）確保手機與電腦皆有良好畫面
+  - **換一題功能**：新增「換一題」按鈕（Phase 1 限用一次），舊題目移至佇列底部避免浪費
+  - **Phase 3 答對顯示修復**：Phase 3 結束前檢查 `roundResult` 是否已存在，防止覆蓋搶答成功的結果
+- ✅ **極限記憶 10x10 修復**：
+  - **背景溢位修復**：容器新增 `pb-8` 底部留白，確保捲動時背景延伸
+  - **卡片大小動態調整**：10x10 網格使用 `text-2xl md:text-3xl`（稍微縮小但保持手機可讀），8x8 使用 `text-3xl md:text-4xl`
+- ✅ **觀戰模式**：
+  - 遊戲進行中加入房間的新玩家不再被加入 `players` 列表，僅能觀看遊戲進行
+  - 遊戲開始前加入的玩家正常參與
+  - 遊戲中重整的玩家可重連並繼續遊玩
+  - 影響範圍：5 個遊戲（SketchGame, MemoryGame, CharadesGame, EmojiGame, ShareGame）
 
 #### v12.7 (2026-01-21) - MemoryGame 題庫數量顯示修正
 - ✅ **Bug 修復 - SettingsModal 題庫計算**：

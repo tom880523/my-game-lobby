@@ -24,7 +24,7 @@ const DEFAULT_EMOJI_PAIRS = [
     '🍎', '🍊', '🍋', '🍇', '🍓', '🍒', '🥝', '🍑',
     '🌸', '🌺', '🌻', '🌹', '🌴', '🍀', '⭐', '🌙',
     '❤️', '💎', '🔥', '⚡', '🎸', '🎺', '🎲', '🎯',
-	'🦓', '🍭', '✈️', '🎄', '🎨', '👄', '✋', '🎈'
+    '🦓', '🍭', '✈️', '🎄', '🎨', '👄', '✋', '🎈'
 ];
 
 // =================================================================
@@ -99,9 +99,10 @@ export default function MemoryGame({ onBack, getNow, currentUser, isAdmin }) {
                     return;
                 }
 
-                if (data.status === 'playing' && view === 'room') setView('game');
-                if (data.status === 'finished' && view === 'game') setView('result');
-                if (data.status === 'waiting' && (view === 'game' || view === 'result')) setView('room');
+                // ★ 斷線重連修復：只要玩家在名單中，就根據遊戲狀態切換畫面
+                if (data.status === 'playing' && amIInRoom) setView('game');
+                if (data.status === 'finished' && amIInRoom) setView('result');
+                if (data.status === 'waiting' && amIInRoom && view !== 'lobby') setView('room');
             } else if (view !== 'lobby') {
                 alert("房間已關閉");
                 setView('lobby');
@@ -184,6 +185,7 @@ export default function MemoryGame({ onBack, getNow, currentUser, isAdmin }) {
             const rId = roomId.toUpperCase();
             await checkAndLeaveOldRoom(user.uid, rId);
             const roomRef = doc(db, 'memory_rooms', `memory_room_${rId}`);
+            let isSpectator = false;
 
             await runTransaction(db, async (transaction) => {
                 const roomDoc = await transaction.get(roomRef);
@@ -191,9 +193,18 @@ export default function MemoryGame({ onBack, getNow, currentUser, isAdmin }) {
                 const data = roomDoc.data();
                 const currentPlayers = data.players || [];
                 const playerIndex = currentPlayers.findIndex(p => p.id === user.uid);
+                const isExistingPlayer = playerIndex >= 0;
+
+                // ★ 觀戰模式：遊戲中新玩家無法加入 players
+                if (data.status !== 'waiting' && !isExistingPlayer) {
+                    console.log('[MemoryGame] 觀戰模式加入:', rId);
+                    isSpectator = true;
+                    return;
+                }
+
                 const newPlayer = { id: user.uid, name: playerName, team: null, isHost: false };
                 let newPlayersList;
-                if (playerIndex >= 0) {
+                if (isExistingPlayer) {
                     newPlayersList = [...currentPlayers];
                     newPlayersList[playerIndex] = { ...newPlayersList[playerIndex], name: playerName };
                 } else {
@@ -202,7 +213,8 @@ export default function MemoryGame({ onBack, getNow, currentUser, isAdmin }) {
                 transaction.update(roomRef, { players: newPlayersList });
             });
 
-            console.log('[MemoryGame] 成功加入房間');
+            console.log('[MemoryGame] 成功加入房間', isSpectator ? '(觀戰模式)' : '');
+            if (isSpectator) alert("遊戲進行中，您以觀戰模式加入");
             setRoomId(rId);
             setView('room');
         } catch (e) {
@@ -1212,6 +1224,13 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
     const matchedPairs = roomData.matchedPairs || 0;
     const totalPairs = roomData.totalPairs || 8;
 
+    // ★ 根據網格大小動態調整卡片字體（保持手機可讀）
+    const cardSizeClass = gridCols >= 10
+        ? 'text-2xl md:text-3xl'  // 10x10: 稍微縮小但仍可讀
+        : gridCols >= 8
+            ? 'text-3xl md:text-4xl'  // 8x8: 中等大小
+            : 'text-4xl md:text-5xl lg:text-6xl';  // 預設：大字體
+
     // ★★★ 嚴格輪替檢查 ★★★
     const turnOrder = roomData.turnOrder || {};
     const currentMemberIndices = roomData.currentMemberIndices || {};
@@ -1341,7 +1360,7 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
     const sortedTeams = [...teams].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
 
     return (
-        <div className="flex-1 p-4 flex flex-col items-center text-white">
+        <div className="flex-1 p-4 flex flex-col items-center text-white pb-8">
             {/* 狀態列 */}
             <div className="w-full max-w-4xl flex flex-wrap justify-between items-center mb-4 gap-4">
                 <div className="flex items-center gap-4">
@@ -1365,7 +1384,7 @@ function MemoryGameInterface({ roomData, roomId, currentUser, getNow }) {
                         key={card.id}
                         onClick={() => handleCardClick(card)}
                         disabled={card.isMatched || !isMyTurn || isProcessing}
-                        className={`aspect-square rounded-xl flex items-center justify-center text-4xl md:text-5xl lg:text-6xl transition-all duration-300 transform
+                        className={`aspect-square rounded-xl flex items-center justify-center ${cardSizeClass} transition-all duration-300 transform
                             ${card.isMatched ? 'opacity-0 invisible scale-75 cursor-default' :
                                 (card.isFlipped || flippedIds.includes(card.id)) ? 'bg-white/10 rotate-y-0' :
                                     'bg-gradient-to-br from-emerald-600 to-cyan-700 hover:from-emerald-500 hover:to-cyan-600 cursor-pointer hover:scale-105'}
@@ -1485,7 +1504,7 @@ function MemoryResultView({ roomData, isHost, roomId }) {
 // =================================================================
 function MemorySettingsModal({ localSettings, setLocalSettings, setShowSettings, roomData, onSave }) {
     const updateSetting = (key, value) => setLocalSettings(prev => ({ ...prev, [key]: value }));
-    
+
     // ★ 修正：正確計算啟用中的題庫數量
     const availablePairs = (() => {
         let count = 0;

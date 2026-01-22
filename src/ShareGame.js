@@ -72,9 +72,10 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
                     return;
                 }
 
-                if (data.status === 'playing' && view === 'room') setView('game');
-                if (data.status === 'finished' && view === 'game') setView('result');
-                if (data.status === 'waiting' && (view === 'game' || view === 'result')) setView('room');
+                // ★ 斷線重連修復：只要玩家在名單中，就根據遊戲狀態切換畫面
+                if (data.status === 'playing' && amIInRoom) setView('game');
+                if (data.status === 'finished' && amIInRoom) setView('result');
+                if (data.status === 'waiting' && amIInRoom && view !== 'lobby') setView('room');
             } else if (view !== 'lobby') {
                 alert("房間已關閉");
                 setView('lobby');
@@ -157,6 +158,7 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
             const rId = roomId.toUpperCase();
             await checkAndLeaveOldRoom(user.uid, rId);
             const roomRef = doc(db, 'share_rooms', `room_${rId}`);
+            let isSpectator = false;
 
             await runTransaction(db, async (transaction) => {
                 const roomDoc = await transaction.get(roomRef);
@@ -164,9 +166,18 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
                 const data = roomDoc.data();
                 const currentPlayers = data.players || [];
                 const playerIndex = currentPlayers.findIndex(p => p.id === user.uid);
+                const isExistingPlayer = playerIndex >= 0;
+
+                // ★ 觀戰模式：遊戲中新玩家無法加入 players
+                if (data.status !== 'waiting' && !isExistingPlayer) {
+                    console.log('[ShareGame] 觀戰模式加入:', rId);
+                    isSpectator = true;
+                    return;
+                }
+
                 const newPlayer = { id: user.uid, name: playerName, isHost: false };
                 let newPlayersList;
-                if (playerIndex >= 0) {
+                if (isExistingPlayer) {
                     newPlayersList = [...currentPlayers];
                     newPlayersList[playerIndex] = { ...newPlayersList[playerIndex], name: playerName };
                 } else {
@@ -175,7 +186,8 @@ export default function ShareGame({ onBack, getNow, currentUser, isAdmin }) {
                 transaction.update(roomRef, { players: newPlayersList });
             });
 
-            console.log("[ShareGame] Joined room:", rId);
+            console.log("[ShareGame] Joined room:", rId, isSpectator ? '(觀戰模式)' : '');
+            if (isSpectator) alert("遊戲進行中，您以觀戰模式加入");
             setRoomId(rId);
             setView('room');
         } catch (e) {
