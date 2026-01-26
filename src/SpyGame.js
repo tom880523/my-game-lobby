@@ -530,12 +530,31 @@ function SpyGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTim
         setSelectedCandidateId(targetId);
     };
 
-    // ★★★ 兩段式投票：確認送出 ★★★
+    // ★★★ 兩段式投票：確認送出 (v2.2 原子化更新) ★★★
     const confirmVote = async () => {
         if (!selectedCandidateId) return alert("請先選擇要投票的對象！");
-        setVoteSubmitted(true);
-        const newVotes = { ...votes, [currentUser.uid]: selectedCandidateId };
-        await updateDoc(doc(db, 'spy_rooms', `spy_room_${roomId}`), { votes: newVotes });
+
+        try {
+            setVoteSubmitted(true);
+
+            const roomRef = doc(db, 'spy_rooms', `spy_room_${roomId}`);
+
+            // ✅ 原子化更新：使用 Dot Notation 只更新該玩家的投票
+            // 避免多人同時投票時讀取整個 votes 物件造成 Contention 錯誤
+            await updateDoc(roomRef, {
+                [`votes.${currentUser.uid}`]: selectedCandidateId
+            });
+
+            console.log('[SpyGame] 投票成功:', {
+                playerId: currentUser.uid,
+                targetId: selectedCandidateId
+            });
+
+        } catch (error) {
+            console.error('[SpyGame] 投票失敗:', error);
+            setVoteSubmitted(false); // 允許重試
+            alert("投票失敗，請重試！");
+        }
     };
 
     // 主持人結算投票
