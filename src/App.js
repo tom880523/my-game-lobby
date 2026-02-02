@@ -64,25 +64,23 @@ function MainApp() {
 
   // 1. 全域登入監聽
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
       if (u) {
         setUser(u);
-        if (!u.isAnonymous) {
-          try {
-            const adminDoc = await getDoc(doc(db, 'admins', u.uid));
-            setIsAdmin(adminDoc.exists());
-          } catch (e) {
-            setIsAdmin(false);
-          }
+        // ★ 直接檢查 Email 判定管理員身份 ★
+        if (!u.isAnonymous && u.email === "tom880523@gmail.com") {
+          console.log("[DEBUG] 管理員登入成功！Email:", u.email);
+          setIsAdmin(true);
         } else {
+          console.log("[DEBUG] 一般使用者登入，Email:", u.email || "匿名");
           setIsAdmin(false);
         }
         setAuthLoading(false);
       } else {
         // 未登入則自動匿名登入
-        console.log("Auto signing in anonymously...");
+        console.log("[DEBUG] Auto signing in anonymously...");
         signInAnonymously(auth).catch((e) => {
-          console.error("Auth error:", e);
+          console.error("[DEBUG] Auth error:", e);
           setAuthLoading(false);
         });
       }
