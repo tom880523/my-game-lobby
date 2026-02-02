@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from 'firebase/auth';
-import { doc, getDoc, addDoc, collection, serverTimestamp, onSnapshot, deleteDoc } from 'firebase/firestore'; // 補上缺少的引用
+import { addDoc, collection, serverTimestamp, onSnapshot, deleteDoc } from 'firebase/firestore';
 import {
   Users, Gamepad2, ArrowLeft, LogIn, Palette, Eye, HeartHandshake
 } from 'lucide-react';
