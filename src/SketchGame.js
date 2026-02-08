@@ -875,7 +875,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 text-white p-2 md:p-4 font-sans">
+        <div className="min-h-[100dvh] h-auto bg-slate-900 text-white p-2 md:p-4 font-sans flex flex-col">
             {/* ★★★ 過場彈窗 (roundResult) ★★★ */}
             {roomData.roundResult && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-in fade-in duration-300">
@@ -936,7 +936,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
                         {/* Tools Row (Drawer Only) - Landscape: Right Column */}
                         {isDrawer && (
-                            <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-800 rounded-xl p-2 shadow-md landscape:flex-col landscape:w-16 landscape:order-last">
+                            <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-800 rounded-xl p-2 shadow-md landscape:flex-col landscape:w-24 landscape:order-last">
                                 <div className="relative group">
                                     <input
                                         type="color"
