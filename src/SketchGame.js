@@ -875,7 +875,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 flex flex-col">
+        <div className="min-h-screen bg-slate-900 flex flex-col landscape:h-screen landscape:overflow-hidden md:!h-auto md:!overflow-visible">
             {/* ★★★ 過場彈窗 (roundResult) ★★★ */}
             {roomData.roundResult && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-in fade-in duration-300">
@@ -898,8 +898,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
             )}
 
             {/* ★★★ Main Content ★★★ */}
-            <main className="flex-1 flex flex-col max-w-6xl mx-auto w-full p-2 md:p-4">
-                <div className="flex-1 text-white relative">
+            <main className="flex-1 flex flex-col max-w-6xl mx-auto w-full p-2 md:p-4 landscape:p-2 landscape:h-full landscape:overflow-hidden md:!h-auto md:!overflow-visible">
+                <div className="flex-1 text-white relative landscape:flex landscape:flex-col landscape:min-h-0 md:!block">
 
                     {/* Desktop Score Bar (hidden on mobile) */}
                     <div className="hidden md:flex justify-between items-center mb-4">
@@ -930,10 +930,10 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                     </div>
 
                     {/* ★★★ Main Grid ★★★ */}
-                    <div className="grid md:grid-cols-3 gap-4">
+                    <div className="grid md:grid-cols-3 gap-4 landscape:flex landscape:flex-1 landscape:min-h-0 md:!grid">
 
                         {/* --- Left Column (Canvas & Tools) - md:col-span-2 --- */}
-                        <div className="md:col-span-2 bg-slate-800 rounded-2xl p-2 md:p-4 flex flex-col landscape:flex-row landscape:h-[calc(100dvh-2rem)] landscape:overflow-hidden md:!flex-col md:!h-auto md:!overflow-visible gap-4">
+                        <div className="md:col-span-2 bg-slate-800 rounded-2xl p-2 md:p-4 flex flex-col landscape:flex-row landscape:flex-1 landscape:min-h-0 md:!flex-col md:!min-h-0 gap-4">
 
                             {/* Header: Phase & Status */}
                             <div className="flex justify-between items-center w-full landscape:hidden md:!flex">
