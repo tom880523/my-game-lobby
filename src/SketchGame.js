@@ -1016,8 +1016,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                             )}
 
                             {/* Canvas Container */}
-                            {/* Portrait: h-[30vh] + aspect-video | Landscape: h-[65vh] + aspect-video | Desktop: min-h-500 */}
-                            <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white h-[30vh] aspect-video mx-auto relative touch-none landscape:h-[65vh] md:!h-auto md:!min-h-[500px] md:!w-full md:!mx-0">
+                            {/* Portrait: w-[95vw] + 4:3 ratio | Landscape: h-[50vh] + 16:9 | Desktop: min-h-500 */}
+                            <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white w-[95vw] aspect-[4/3] mx-auto relative touch-none landscape:w-auto landscape:h-[50vh] landscape:aspect-video md:!h-auto md:!min-h-[500px] md:!w-full md:!mx-0 md:!aspect-video">
                                 {isDrawer ? (
                                     <ReactSketchCanvas
                                         ref={canvasRef}
