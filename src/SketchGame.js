@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ReactSketchCanvas } from 'react-sketch-canvas';
 import {
     doc, setDoc, getDoc, onSnapshot, updateDoc,
     runTransaction, deleteDoc, collection, addDoc, getDocs,
@@ -591,7 +592,8 @@ function SketchRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
 // =================================================================
 function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrentTime }) {
     const canvasRef = useRef(null);
-    const [isDrawing, setIsDrawing] = useState(false);
+    // eslint-disable-next-line no-unused-vars
+    const [isDrawing, setIsDrawing] = useState(false); // keep for backward compatibility if needed, though ReactSketchCanvas handles it
     const [brushColor, setBrushColor] = useState('#000000');
     // eslint-disable-next-line no-unused-vars
     const [strokeWidth, setStrokeWidth] = useState(4);
@@ -599,7 +601,6 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const [guess, setGuess] = useState('');
     const [timeLeft, setTimeLeft] = useState(0);
     const [showWrong, setShowWrong] = useState(false);
-    const lastPosRef = useRef({ x: 0, y: 0 });
     const snapshotSentRef = useRef({ phase1: false, phase2: false, phase3: false });
 
     const teams = roomData.settings.teams || [];
@@ -635,13 +636,17 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 console.log('[SketchGame] Phase 1 結束, 發送 Snapshot 1 (隊友可見)');
                 const canvas = canvasRef.current;
                 if (canvas) {
-                    const imageData = canvas.toDataURL('image/webp', 0.6);
-                    await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
-                        canvasImage: imageData,
-                        canvasVisibility: 'team',
-                        phase: 2,
-                        phaseEndTime: now + roomData.settings.phase2Time * 1000
-                    });
+                    try {
+                        const imageData = await canvas.exportImage("png");
+                        await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
+                            canvasImage: imageData,
+                            canvasVisibility: 'team',
+                            phase: 2,
+                            phaseEndTime: now + roomData.settings.phase2Time * 1000
+                        });
+                    } catch (e) {
+                        console.error("Export image failed:", e);
+                    }
                 }
             }
 
@@ -651,14 +656,18 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 console.log('[SketchGame] Phase 2 結束, 發送 Snapshot 2 (全員可見)');
                 const canvas = canvasRef.current;
                 if (canvas) {
-                    const imageData = canvas.toDataURL('image/webp', 0.6);
-                    const phase3Time = roomData.settings.phase3Time || 10;
-                    await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
-                        canvasImage: imageData,
-                        canvasVisibility: 'all',
-                        phase: 3,
-                        phaseEndTime: now + phase3Time * 1000
-                    });
+                    try {
+                        const imageData = await canvas.exportImage("png");
+                        const phase3Time = roomData.settings.phase3Time || 10;
+                        await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
+                            canvasImage: imageData,
+                            canvasVisibility: 'all',
+                            phase: 3,
+                            phaseEndTime: now + phase3Time * 1000
+                        });
+                    } catch (e) {
+                        console.error("Export image failed:", e);
+                    }
                 }
             }
 
@@ -707,54 +716,17 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomData.roundResult, isHost]);
 
-    // Canvas 繪圖 (含座標縮放修正)
-    const startDraw = (e) => {
-        if (!isDrawer) return;
-        setIsDrawing(true);
-        const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        const x = (clientX - rect.left) * scaleX;
-        const y = (clientY - rect.top) * scaleY;
-        lastPosRef.current = { x, y };
+    const handleUndo = () => {
+        if (canvasRef.current) {
+            canvasRef.current.undo();
+        }
     };
 
-    const draw = (e) => {
-        if (!isDrawing || !isDrawer) return;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        const x = (clientX - rect.left) * scaleX;
-        const y = (clientY - rect.top) * scaleY;
-
-        ctx.beginPath();
-        ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
-        ctx.lineTo(x, y);
-        ctx.strokeStyle = isEraser ? '#FFFFFF' : brushColor;
-        ctx.lineWidth = strokeWidth;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-
-        lastPosRef.current = { x, y };
+    const handleClear = () => {
+        if (canvasRef.current) {
+            canvasRef.current.clearCanvas();
+        }
     };
-
-    const stopDraw = () => setIsDrawing(false);
-
-    const clearCanvas = () => {
-        if (!isDrawer) return;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-    };
-
 
     // 換下一題
     const nextRound = async (correct, answerTeamId = null) => {
@@ -930,44 +902,65 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                     {isDrawer && (
                         <>
                             {/* 題目顯示 + 換題按鈕 */}
-                            <div className="flex items-center justify-center gap-3 mb-4 flex-wrap">
+                            <div className="md:flex items-center justify-center gap-3 mb-4 hidden">
                                 <span className="text-slate-400">你的題目：</span>
                                 <span className="text-2xl font-bold text-pink-400">{roomData.currentWord}</span>
                             </div>
+
+                            {/* 手機版橫放提示 */}
+                            <div className="md:hidden text-center text-xs text-yellow-400 mb-2 animate-pulse">
+                                📱 請將手機橫放以獲得最佳作畫體驗
+                            </div>
+
                             {/* 工具列 */}
-                            <div className="flex justify-center gap-2 mb-4 flex-wrap">
-                                {BRUSH_COLORS.map(c => (
-                                    <button key={c} onClick={() => { setBrushColor(c); setIsEraser(false); }} className={`w-8 h-8 rounded-full border-2 transition ${brushColor === c && !isEraser ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: c }} />
-                                ))}
-                                <button onClick={() => setIsEraser(!isEraser)} className={`p-2 rounded-lg transition ${isEraser ? 'bg-pink-500' : 'bg-slate-700 hover:bg-slate-600'}`}><Eraser size={20} /></button>
-                                <button onClick={clearCanvas} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg"><RotateCcw size={20} /></button>
+                            <div className="flex justify-center gap-3 mb-4 flex-wrap items-center">
+                                {/* Color Picker */}
+                                <div className="relative group">
+                                    <input
+                                        type="color"
+                                        value={brushColor}
+                                        onChange={(e) => { setBrushColor(e.target.value); setIsEraser(false); }}
+                                        className="w-10 h-10 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0"
+                                    />
+                                </div>
+
+                                <button
+                                    onClick={() => setIsEraser(!isEraser)}
+                                    className={`p-2 rounded-lg transition ${isEraser ? 'bg-pink-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                                    title="橡皮擦"
+                                >
+                                    <Eraser size={20} />
+                                </button>
+
+                                <button
+                                    onClick={handleUndo}
+                                    className="p-2 bg-slate-700 text-slate-300 hover:bg-slate-600 rounded-lg hover:text-white transition"
+                                    title="復原上一步"
+                                >
+                                    <RotateCcw size={20} />
+                                </button>
 
                                 {/* 筆刷粗細滑桿 */}
-                                <div className="flex items-center gap-2 px-2 border-l border-slate-600 ml-2">
-                                    <div className="w-2 h-2 rounded-full bg-slate-400" style={{ transform: `scale(${strokeWidth / 4})` }} />
+                                <div className="flex items-center gap-2 px-3 border-l border-slate-600 ml-2">
+                                    <div className="w-2 h-2 rounded-full bg-slate-400 transition-all" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
                                     <input
                                         type="range"
-                                        min="1" max="20"
+                                        min="2" max="20"
                                         value={strokeWidth}
                                         onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                                        className="w-20 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                                        className="w-24 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                                     />
                                 </div>
                             </div>
-                            {/* Canvas - ★ 手機版強制 70vh 高度 */}
-                            <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white h-[70vh] md:h-[500px]">
-                                <canvas
+
+                            {/* Canvas - 改為 Aspect Video (16:9) + ReactSketchCanvas */}
+                            <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white w-full aspect-video relative touch-none">
+                                <ReactSketchCanvas
                                     ref={canvasRef}
-                                    width={800}
-                                    height={600}
-                                    onMouseDown={startDraw}
-                                    onMouseMove={draw}
-                                    onMouseUp={stopDraw}
-                                    onMouseLeave={stopDraw}
-                                    onTouchStart={startDraw}
-                                    onTouchMove={draw}
-                                    onTouchEnd={stopDraw}
-                                    className="w-full h-full cursor-crosshair touch-none"
+                                    strokeWidth={strokeWidth}
+                                    strokeColor={isEraser ? "#FFFFFF" : brushColor}
+                                    canvasColor="transparent"
+                                    className="w-full h-full"
                                 />
                             </div>
                         </>
@@ -975,9 +968,9 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
                     {/* 猜題者視角 */}
                     {!isDrawer && (
-                        <div className="flex items-center justify-center" style={{ minHeight: '400px' }}>
+                        <div className="flex items-center justify-center min-h-[300px] md:min-h-[400px]">
                             {canSeeImage() && roomData.canvasImage ? (
-                                <img src={roomData.canvasImage} alt="Drawing" className="max-w-full max-h-[60vh] rounded-xl bg-white" />
+                                <img src={roomData.canvasImage} alt="Drawing" className="w-full aspect-video object-contain rounded-xl bg-white" />
                             ) : (
                                 <div className="text-center text-slate-400">
                                     <Palette size={64} className="mx-auto mb-4 opacity-50" />
@@ -998,22 +991,26 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 </div>
 
                 {/* 右側：答案輸入/狀態 */}
-                <div className="bg-slate-800 rounded-2xl p-4 flex flex-col">
+                <div className="bg-slate-800 rounded-2xl p-4 flex flex-col h-full max-h-[600px]">
                     <h3 className="font-bold text-lg mb-4">
                         {isDrawer ? '等待隊友猜題' : '輸入答案'}
                     </h3>
 
                     <div className="flex-1 bg-slate-900 rounded-xl p-3 mb-4 overflow-y-auto">
-                        <div className="text-center text-slate-500 text-sm">
+                        <div className="text-center text-slate-500 text-sm h-full flex items-center justify-center flex-col">
                             {isDrawer ? (
-                                <div className="space-y-2">
+                                <div className="space-y-4">
                                     <p>你是繪圖者</p>
-                                    <p>題目：<span className="text-pink-400 font-bold">{roomData.currentWord}</span></p>
+                                    <div className="p-4 bg-slate-800 rounded-xl border border-pink-500/30">
+                                        <p className="text-xs text-slate-400 mb-1">本題題目</p>
+                                        <p className="text-3xl font-bold text-pink-400">{roomData.currentWord}</p>
+                                    </div>
+                                    <p className="text-xs text-slate-500">盡力畫出特徵讓隊友猜到！</p>
                                 </div>
                             ) : canSeeImage() ? (
                                 <p>輸入你的答案！</p>
                             ) : (
-                                <p>等待圖片..."</p>
+                                <p>等待圖片...</p>
                             )}
                         </div>
                     </div>
