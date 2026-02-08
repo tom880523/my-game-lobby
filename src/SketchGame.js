@@ -647,7 +647,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const isDrawer = roomData.currentDrawerId === currentUser.uid;
     const myTeam = roomData.players?.find(p => p.id === currentUser.uid)?.team;
     const isMyTeamDrawing = myTeam === roomData.currentTeamId;
-    const drawerName = roomData.players?.find(p => p.id === roomData.currentDrawerId)?.name || '???';
+
 
     // 計時器
     useEffect(() => {
