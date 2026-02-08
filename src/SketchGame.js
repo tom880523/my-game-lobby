@@ -853,7 +853,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     };
 
     return (
-        <div className="fixed inset-0 w-full h-[100dvh] flex flex-col landscape:flex-row md:flex-col bg-slate-900 overflow-hidden text-white">
+        <div className="fixed inset-0 w-full h-[100dvh] flex flex-col landscape:flex-row md:flex-col-reverse bg-slate-900 overflow-hidden text-white">
             {/* ★★★ 過場彈窗 (roundResult) ★★★ */}
             {roomData.roundResult && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-in fade-in duration-300">
@@ -880,30 +880,32 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
             {/* 左側/上方：畫布區 */}
             {/* Logic: Landscape=Full Height/Width-Auto | Desktop=Auto Height/Full Width/Aspect Video */}
-            <div className="flex-1 relative bg-gray-100 flex flex-col landscape:h-full md:h-auto md:flex-1 md:w-full min-h-0">
+            <div className="flex-1 relative bg-gray-100 flex flex-col landscape:h-full md:h-auto md:flex-1 md:w-full min-h-0 p-2 md:p-8">
                 {/* 顯示 Phase (左上角懸浮) */}
-                <div className="absolute top-2 left-2 z-10 pointer-events-none">
+                <div className="absolute top-4 left-4 z-10 pointer-events-none">
                     <span className={`px-2 py-1 rounded-lg text-xs font-bold shadow-md text-white ${roomData.phase === 1 ? 'bg-slate-500/80' : roomData.phase === 2 ? 'bg-blue-500/80' : 'bg-orange-500/80'}`}>
                         P{roomData.phase}
                     </span>
-                    {!isDrawer && <span className="ml-2 text-slate-500 text-xs font-bold bg-white/50 px-2 py-1 rounded">{isMyTeamDrawing ? '隊友作畫' : '對手作畫'}</span>}
+                    {!isDrawer && <span className="ml-2 text-slate-500 text-xs font-bold bg-white/50 px-2 py-1 rounded shadow-sm">{isMyTeamDrawing ? '隊友作畫' : '對手作畫'}</span>}
                 </div>
 
-                <div className="flex-1 relative w-full h-full overflow-hidden touch-none">
-                    {/* 繪圖者視角 */}
+                <div className="flex-1 relative w-full h-full touch-none flex items-center justify-center">
+                    {/* 繪圖者視角 - 畫布有白底/陰影 */}
                     {isDrawer ? (
-                        <ReactSketchCanvas
-                            ref={canvasRef}
-                            strokeWidth={strokeWidth}
-                            strokeColor={isEraser ? "#FFFFFF" : brushColor}
-                            canvasColor="transparent"
-                            className="w-full h-full"
-                        />
+                        <div className="w-full h-full relative rounded-xl shadow-lg border border-slate-200 bg-white overflow-hidden">
+                            <ReactSketchCanvas
+                                ref={canvasRef}
+                                strokeWidth={strokeWidth}
+                                strokeColor={isEraser ? "#FFFFFF" : brushColor}
+                                canvasColor="transparent"
+                                className="w-full h-full"
+                            />
+                        </div>
                     ) : (
-                        /* 猜題者視角 (圖片) - 強制白底 */
-                        <div className="w-full h-full flex items-center justify-center bg-white">
+                        /* 猜題者視角 - 只有圖有白底/陰影 */
+                        <div className="w-full h-full flex items-center justify-center">
                             {canSeeImage() && roomData.canvasImage ? (
-                                <img src={roomData.canvasImage} alt="Drawing" className="w-full h-full object-contain bg-white" />
+                                <img src={roomData.canvasImage} alt="Drawing" className="w-full h-full object-contain bg-white rounded-xl shadow-lg border border-slate-200" />
                             ) : (
                                 <div className="text-center text-slate-400">
                                     <Palette size={48} className="mx-auto mb-2 opacity-50" />
