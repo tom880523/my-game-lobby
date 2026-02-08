@@ -975,7 +975,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         )}
 
                         {/* Canvas / Image Container - Landscape: Main Area */}
-                        <div className="aspect-video w-full bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center landscape:flex-1">
+                        <div className="aspect-video w-full min-h-[300px] bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center landscape:flex-1 landscape:min-h-[70vh]">
                             {isDrawer ? (
                                 <ReactSketchCanvas
                                     ref={canvasRef}
@@ -1040,7 +1040,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
                     {/* Chat / Interaction Panel */}
                     {!isDrawer && (
-                        <div className="flex-1 bg-slate-800 rounded-2xl p-4 shadow-lg flex flex-col min-h-[150px] md:min-h-0 landscape:min-h-[120px]">
+                        <div className="flex-1 bg-slate-800 rounded-2xl p-2 md:p-4 shadow-lg flex flex-col min-h-[150px] md:min-h-0 landscape:min-h-[120px]">
                             <div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-1 text-sm text-slate-300 relative">
                                 {/* Simple Placeholder for Chat Logic */}
                                 <div className="text-center opacity-30 py-4">
@@ -1054,7 +1054,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                             {/* ★ Feedback Message */}
                             {feedbackMessage && <div className="text-red-400 font-bold text-center mb-2 animate-bounce text-sm">{feedbackMessage}</div>}
 
-                            <div className="flex gap-2 w-full">
+                            <div className="flex gap-2 w-full max-w-full box-border">
                                 <input
                                     value={guess}
                                     onChange={e => setGuess(e.target.value)}
