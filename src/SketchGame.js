@@ -936,7 +936,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
                         {/* Tools Row (Drawer Only) - Landscape: Right Column */}
                         {isDrawer && (
-                            <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-800 rounded-xl p-2 shadow-md landscape:flex-col landscape:w-24 landscape:order-last">
+                            <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-800 rounded-xl p-2 shadow-md landscape:flex-col landscape:w-24 landscape:order-last md:flex-row md:w-full md:order-none md:gap-4">
                                 <div className="relative group">
                                     <input
                                         type="color"
@@ -945,14 +945,14 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                         className="w-8 h-8 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0 shadow-sm hover:scale-110 transition"
                                     />
                                 </div>
-                                <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full landscape:flex-col landscape:p-0 landscape:bg-transparent landscape:rounded-none">
+                                <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full landscape:flex-col landscape:p-0 landscape:bg-transparent landscape:rounded-none md:flex-row md:px-3 md:py-1 md:bg-slate-700/50 md:rounded-full">
                                     <div className="w-2 h-2 rounded-full bg-slate-400" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
                                     <input
                                         type="range"
                                         min="2" max="20"
                                         value={strokeWidth}
                                         onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                                        className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer landscape:-rotate-90 landscape:w-20 landscape:my-6"
+                                        className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer landscape:-rotate-90 landscape:w-20 landscape:my-6 md:rotate-0 md:w-32 md:my-0"
                                     />
                                 </div>
                                 <div className="flex gap-2 landscape:flex-col">
@@ -975,7 +975,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         )}
 
                         {/* Canvas / Image Container - Landscape: Main Area */}
-                        <div className="aspect-video w-full bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center landscape:flex-1">
+                        <div className="aspect-video w-full bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center landscape:aspect-auto landscape:h-[80vh] landscape:flex-1 md:aspect-video md:h-auto md:min-h-[500px] md:flex-none">
                             {isDrawer ? (
                                 <ReactSketchCanvas
                                     ref={canvasRef}
