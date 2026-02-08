@@ -952,7 +952,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                         min="2" max="20"
                                         value={strokeWidth}
                                         onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                                        className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer landscape:w-20 landscape:h-1"
+                                        className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer landscape:-rotate-90 landscape:w-20 landscape:my-6"
                                     />
                                 </div>
                                 <div className="flex gap-2 landscape:flex-col">
@@ -1054,12 +1054,12 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                             {/* ★ Feedback Message */}
                             {feedbackMessage && <div className="text-red-400 font-bold text-center mb-2 animate-bounce text-sm">{feedbackMessage}</div>}
 
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full">
                                 <input
                                     value={guess}
                                     onChange={e => setGuess(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && submitGuess()}
-                                    className={`flex-1 bg-slate-700 border-2 px-3 py-2 rounded-xl text-white outline-none ${showWrong ? 'border-red-500 animate-pulse' : 'border-slate-600 focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                                    className={`flex-1 min-w-0 bg-slate-700 border-2 px-3 py-2 rounded-xl text-white outline-none ${showWrong ? 'border-red-500 animate-pulse' : 'border-slate-600 focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed'}`}
                                     placeholder={
                                         roomData.phase === 1 ? "繪圖中... (Phase 1)" :
                                             roomData.phase === 2 ? (isMyTeamDrawing ? "快猜！(僅隊友可見)" : "等待隊友作畫結束...") :
@@ -1070,7 +1070,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 <button
                                     onClick={submitGuess}
                                     disabled={!!roomData.roundResult || roomData.phase === 1 || (roomData.phase === 2 && !isMyTeamDrawing)}
-                                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 rounded-xl font-bold transition shadow-md whitespace-nowrap"
+                                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 rounded-xl font-bold transition shadow-md whitespace-nowrap shrink-0"
                                 >
                                     送出
                                 </button>
