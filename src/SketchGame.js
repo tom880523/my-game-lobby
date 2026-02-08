@@ -975,7 +975,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         )}
 
                         {/* Canvas / Image Container - Landscape: Main Area */}
-                        <div className="aspect-video w-full min-h-[300px] bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center landscape:flex-1 landscape:min-h-[70vh]">
+                        <div className="aspect-video w-full bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center landscape:flex-1">
                             {isDrawer ? (
                                 <ReactSketchCanvas
                                     ref={canvasRef}
