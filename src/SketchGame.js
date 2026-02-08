@@ -853,7 +853,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     };
 
     return (
-        <div className="fixed inset-0 w-full h-[100dvh] flex flex-col landscape:flex-row md:flex-col-reverse bg-slate-900 overflow-hidden text-white">
+        <div className="min-h-screen bg-slate-900 text-white p-4 font-sans">
             {/* ★★★ 過場彈窗 (roundResult) ★★★ */}
             {roomData.roundResult && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-in fade-in duration-300">
@@ -875,24 +875,76 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 </div>
             )}
 
+            {/* Mobile Rotate Hint */}
+            <div className="md:hidden text-center text-xs text-slate-500 mb-2">
+                📱 請將手機橫放以獲得最佳作畫體驗
+            </div>
 
+            {/* Main Grid Container */}
+            <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-4">
 
+                {/* --- Left Column (Canvas & Tools) - md:col-span-2 --- */}
+                <div className="md:col-span-2 flex flex-col gap-4">
 
-            {/* 左側/上方 (Mobile/Desktop) or 左側 (Landscape)：畫布區 */}
-            {/* Logic: Landscape=Full Height | Desktop=Flex-1 (Bottom) | Mobile=Flex-1 (Top) */}
-            <div className="flex-1 relative bg-gray-100 flex flex-col landscape:h-full md:flex-1 md:w-full min-h-0 p-2 md:p-6 landscape:p-2">
-                {/* 顯示 Phase (左上角懸浮) */}
-                <div className="absolute top-4 left-4 z-10 pointer-events-none">
-                    <span className={`px-2 py-1 rounded-lg text-xs font-bold shadow-md text-white ${roomData.phase === 1 ? 'bg-slate-500/80' : roomData.phase === 2 ? 'bg-blue-500/80' : 'bg-orange-500/80'}`}>
-                        P{roomData.phase}
-                    </span>
-                    {!isDrawer && <span className="ml-2 text-slate-500 text-xs font-bold bg-white/50 px-2 py-1 rounded shadow-sm">{isMyTeamDrawing ? '隊友作畫' : '對手作畫'}</span>}
-                </div>
+                    {/* Header: Phase & Status */}
+                    <div className="flex justify-between items-center bg-slate-800 rounded-xl p-3 shadow-md">
+                        <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded-lg text-xs font-bold shadow-md text-white ${roomData.phase === 1 ? 'bg-slate-500' : roomData.phase === 2 ? 'bg-blue-500' : 'bg-orange-500'}`}>
+                                Phase {roomData.phase}
+                            </span>
+                            {!isDrawer && (
+                                <span className={`text-xs font-bold px-2 py-1 rounded ${isMyTeamDrawing ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                    {isMyTeamDrawing ? '隊友作畫' : '對手作畫'}
+                                </span>
+                            )}
+                        </div>
+                        {/* Mobile Timer (Small) */}
+                        <div className="md:hidden font-mono font-bold text-xl">{timeLeft}s</div>
+                    </div>
 
-                <div className="flex-1 relative w-full h-full touch-none flex items-center justify-center">
-                    {/* 繪圖者視角 - 畫布有白底/陰影 */}
-                    {isDrawer ? (
-                        <div className="w-full h-full relative rounded-xl shadow-lg border border-slate-200 bg-white overflow-hidden">
+                    {/* Tools Row (Drawer Only) */}
+                    {isDrawer && (
+                        <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-800 rounded-xl p-2 shadow-md">
+                            <div className="relative group">
+                                <input
+                                    type="color"
+                                    value={brushColor}
+                                    onChange={(e) => { setBrushColor(e.target.value); setIsEraser(false); }}
+                                    className="w-8 h-8 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0 shadow-sm hover:scale-110 transition"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full">
+                                <div className="w-2 h-2 rounded-full bg-slate-400" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
+                                <input
+                                    type="range"
+                                    min="2" max="20"
+                                    value={strokeWidth}
+                                    onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
+                                    className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setIsEraser(!isEraser)}
+                                    className={`p-2 rounded-full transition shadow-sm ${isEraser ? 'bg-pink-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                                    title="橡皮擦"
+                                >
+                                    <Eraser size={18} />
+                                </button>
+                                <button
+                                    onClick={handleUndo}
+                                    className="p-2 rounded-full bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition shadow-sm active:scale-95"
+                                    title="復原"
+                                >
+                                    <RotateCcw size={18} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Canvas / Image Container */}
+                    <div className="aspect-video w-full bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center">
+                        {isDrawer ? (
                             <ReactSketchCanvas
                                 ref={canvasRef}
                                 strokeWidth={strokeWidth}
@@ -900,161 +952,109 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 canvasColor="transparent"
                                 className="w-full h-full"
                             />
-                        </div>
-                    ) : (
-                        /* 猜題者視角 - 只有圖有白底/陰影，等待時透明/深色 */
-                        <div className="w-full h-full flex items-center justify-center">
-                            {canSeeImage() && roomData.canvasImage ? (
-                                <img src={roomData.canvasImage} alt="Drawing" className="max-w-full max-h-full object-contain bg-white rounded-xl shadow-lg border border-slate-200" />
-                            ) : (
-                                <div className="text-center text-slate-400">
-                                    <Palette size={48} className="mx-auto mb-2 opacity-50" />
-                                    <div className="text-lg font-bold">
-                                        {isMyTeamDrawing ? '等待隊友作畫...' : '等待對手作畫...'}
+                        ) : (
+                            /* Guesser View */
+                            <div className="w-full h-full flex items-center justify-center bg-slate-100/5">
+                                {canSeeImage() && roomData.canvasImage ? (
+                                    <img src={roomData.canvasImage} alt="Drawing" className="w-full h-full object-contain bg-white" />
+                                ) : (
+                                    <div className="text-center text-slate-500">
+                                        <Palette size={48} className="mx-auto mb-2 opacity-30" />
+                                        <div className="text-lg font-bold opacity-50">
+                                            {isMyTeamDrawing ? '等待隊友作畫...' : '等待對手作畫...'}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
 
-            {/* 右側/下方 (Mobile/Desktop) or 右側 (Landscape)：工具欄 */}
-            {/* Logic: 
-                Mobile (col): Bottom, w-full
-                Landscape (row): Right, w-64, flex-col
-                Desktop (col-reverse): Top, flex-row
-            */}
-            <div className="
-                bg-slate-800 border-slate-700 p-2 gap-2 overflow-y-auto z-20 shadow-xl
-                flex flex-col
-                w-full h-auto border-t
-                landscape:w-64 landscape:h-full landscape:border-l landscape:border-t-0 landscape:shrink-0
-                md:w-full md:h-auto md:border-b md:border-t-0 md:flex-row md:items-center md:justify-center md:py-3 md:shrink-0
-            ">
-                {/* 內部容器：處理排列方向 */}
-                {/* Mobile/Landscape: flex-col, Desktop: flex-row */}
-                <div className="flex flex-col landscape:flex-col md:flex-row md:items-center md:justify-center gap-4 w-full h-full md:w-auto">
+                {/* --- Right Column (Info & Interaction) - md:col-span-1 --- */}
+                <div className="md:col-span-1 flex flex-col gap-4 h-full md:max-h-[calc(100vh-2rem)]">
 
-                    {/* 1. 資訊區 (題目/計時) */}
-                    <div className="flex landscape:flex-col md:flex-row items-center gap-4 landscape:gap-2 justify-between landscape:justify-center md:justify-start w-full landscape:w-full md:w-auto shrink-0">
-                        {/* Timer & Round Info */}
-                        <div className="text-center landscape:w-full md:text-left flex items-center gap-3 landscape:flex-col landscape:gap-0">
-                            <div className={`font-mono font-bold text-3xl landscape:text-4xl md:text-3xl ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-                                {timeLeft}s
-                            </div>
-                            <div className="text-xs text-slate-400 landscape:mt-1 bg-slate-700/50 px-2 py-1 rounded-full">
-                                Round {roomData.currentRound}
-                            </div>
+                    {/* Top Info Panel */}
+                    <div className="bg-slate-800 rounded-2xl p-4 shadow-lg text-center">
+                        {/* Desktop Timer (Big) */}
+                        <div className="hidden md:block font-mono font-bold text-6xl text-white mb-2">
+                            {timeLeft}
                         </div>
+                        <div className="text-slate-400 text-sm mb-4">Round {roomData.currentRound}</div>
 
-                        {/* Topic - Desktop: Row, Landscape: Col */}
-                        <div className="text-center landscape:w-full md:text-left md:flex md:items-center md:gap-2">
-                            <div className="text-[10px] text-slate-400 hidden landscape:block md:hidden">題目</div>
-                            {isDrawer ? (
-                                <div className="text-xl landscape:text-lg md:text-2xl font-bold text-pink-400 break-all bg-pink-500/10 px-3 py-1 rounded-lg border border-pink-500/20">{roomData.currentWord}</div>
-                            ) : (
-                                <div className="text-sm font-bold text-slate-300">
+
+                        {/* Topic / Status */}
+                        {isDrawer ? (
+                            <div className="bg-pink-500/10 border border-pink-500/30 rounded-xl p-4">
+                                <div className="text-slate-400 text-xs mb-1">本題題目</div>
+                                <div className="text-3xl font-bold text-pink-400">{roomData.currentWord}</div>
+                            </div>
+                        ) : (
+                            <div className="bg-slate-700/30 rounded-xl p-4">
+                                <div className="text-slate-400 text-xs mb-1">狀態</div>
+                                <div className="text-xl font-bold text-slate-200">
                                     {canSeeImage() ? '猜猜看是什麼？' : '準備中...'}
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
 
-                        {/* Force End Button (Host Only) */}
+                        {/* Force End (Host) */}
                         {isHost && (
-                            <button onClick={forceEnd} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded hover:bg-red-500/30 whitespace-nowrap">
-                                結束
+                            <button onClick={forceEnd} className="mt-4 text-xs bg-red-500/10 text-red-400 px-3 py-1 rounded hover:bg-red-500/20 w-full transition">
+                                強制結束回合
                             </button>
                         )}
                     </div>
 
-                    {/* 2. 操作區 (繪圖工具 or 猜題輸入) */}
-                    <div className="flex-1 w-full landscape:w-full md:w-auto flex flex-col landscape:flex-col md:flex-row items-center justify-center gap-2 min-h-0">
-
-                        {isDrawer ? (
-                            /* 繪圖工具組 - Desktop: Horizontal, Landscape: Vertical */
-                            <div className="flex flex-wrap landscape:flex-col md:flex-row items-center gap-4 justify-center w-full">
-                                {/* Color */}
-                                <div className="relative group">
-                                    <input
-                                        type="color"
-                                        value={brushColor}
-                                        onChange={(e) => { setBrushColor(e.target.value); setIsEraser(false); }}
-                                        className="w-10 h-10 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0 shadow-lg hover:scale-110 transition"
-                                    />
+                    {/* Chat / Interaction Panel */}
+                    {!isDrawer && (
+                        <div className="flex-1 bg-slate-800 rounded-2xl p-4 shadow-lg flex flex-col min-h-[300px] md:min-h-0">
+                            <div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-1 text-sm text-slate-300">
+                                {/* Simple Placeholder for Chat Logic */}
+                                <div className="text-center opacity-30 py-4">
+                                    遊戲聊天室
                                 </div>
-
-                                {/* Brush Size */}
-                                <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full">
-                                    <div className="w-2 h-2 rounded-full bg-slate-400" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
-                                    <input
-                                        type="range"
-                                        min="2" max="20"
-                                        value={strokeWidth}
-                                        onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                                        className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
-                                    />
-                                </div>
-
-                                {/* Tools Buttons */}
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setIsEraser(!isEraser)}
-                                        className={`p-2 rounded-full transition shadow-lg ${isEraser ? 'bg-pink-500 text-white ring-2 ring-offset-2 ring-pink-500' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                                        title="橡皮擦"
-                                    >
-                                        <Eraser size={20} />
-                                    </button>
-                                    <button
-                                        onClick={handleUndo}
-                                        className="p-2 rounded-full bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition shadow-lg active:scale-95"
-                                        title="復原"
-                                    >
-                                        <RotateCcw size={20} />
-                                    </button>
+                                <div className="p-2 bg-slate-700/50 rounded text-xs">
+                                    系統: 歡迎來到猜畫遊戲！
                                 </div>
                             </div>
-                        ) : (
-                            /* 猜題區 */
-                            <div className="w-full flex flex-col landscape:flex-col md:flex-row gap-2 h-full justify-center landscape:max-h-[300px] overflow-hidden">
-                                {/* 聊天/訊息區 - Mobile/Landscape: Scrollable Box, Desktop: Compact Line? */}
-                                <div className="flex-1 bg-slate-900/50 rounded-xl p-2 overflow-y-auto text-sm min-h-[60px] landscape:min-h-[100px] md:h-auto md:min-h-0 md:bg-transparent md:flex md:items-center md:justify-end md:p-0">
-                                    <div className="text-slate-400 text-xs md:text-sm md:mr-2 truncate">
-                                        {isMyTeamDrawing ? '提示: 這是你的隊友！' : '提示: 這是對手！'}
+
+                            <div className="flex gap-2">
+                                <input
+                                    value={guess}
+                                    onChange={e => setGuess(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && submitGuess()}
+                                    className={`flex-1 bg-slate-700 border-2 px-3 py-2 rounded-xl text-white outline-none ${showWrong ? 'border-red-500 animate-pulse' : 'border-slate-600 focus:border-blue-400'}`}
+                                    placeholder="輸入答案..."
+                                    disabled={!!roomData.roundResult}
+                                />
+                                <button
+                                    onClick={submitGuess}
+                                    disabled={!!roomData.roundResult}
+                                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 rounded-xl font-bold transition shadow-md"
+                                >
+                                    送出
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Scoreboard (Compact) */}
+                    <div className="bg-slate-800 rounded-xl p-4 shadow-lg mt-auto">
+                        <div className="grid grid-cols-2 gap-2">
+                            {teams.map(t => (
+                                <div key={t.id} className="flex items-center justify-between bg-slate-700/40 p-2 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }}></div>
+                                        <span className="text-xs text-slate-300 truncate max-w-[60px]">{t.name}</span>
                                     </div>
-                                    {/* Placeholder for messages if needed */}
+                                    <span className="font-bold text-white">{scores[t.id] || 0}</span>
                                 </div>
-
-                                {/* Input */}
-                                <div className="flex gap-2 shrink-0 md:w-auto">
-                                    <input
-                                        value={guess}
-                                        onChange={e => setGuess(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && submitGuess()}
-                                        className={`flex-1 md:w-64 bg-slate-700 border px-3 py-2 rounded-xl text-white text-sm ${showWrong ? 'border-red-500 animate-pulse bg-red-500/20' : 'border-slate-600'}`}
-                                        placeholder="輸入答案..."
-                                        disabled={!!roomData.roundResult}
-                                    />
-                                    <button onClick={submitGuess} disabled={!!roomData.roundResult} className="bg-pink-500 hover:bg-pink-600 disabled:opacity-50 px-4 rounded-xl font-bold text-sm whitespace-nowrap">
-                                        送出
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 3. 分數 (Desktop: Right, Landscape: Bottom) */}
-                    <div className="flex landscape:grid landscape:grid-cols-2 md:flex-row gap-2 shrink-0 landscape:w-full md:w-auto overflow-x-auto p-1 bg-slate-900/30 rounded-lg md:bg-transparent">
-                        {teams.map(t => (
-                            <div key={t.id} className="flex items-center gap-2 bg-slate-700/50 px-2 py-1 rounded md:justify-end md:bg-slate-800">
-                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
-                                <span className="text-xs text-slate-300 md:hidden landscape:inline">{t.name}</span>
-                                <span className="font-bold text-sm text-white">{scores[t.id] || 0}</span>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
 
                 </div>
+
             </div>
         </div>
     );
