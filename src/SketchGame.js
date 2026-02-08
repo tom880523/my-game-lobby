@@ -9,7 +9,7 @@ import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
     Play, Settings, Plus, Check, X, Shuffle, ClipboardCopy, Trophy,
     ArrowLeft, LogOut, Trash2, Crown, Palette, Eraser, RotateCcw, Edit,
-    Cloud, Download, Library
+    Cloud, Download, Library, Maximize, Minimize
 } from 'lucide-react';
 
 import { db, auth } from './firebase';
@@ -639,6 +639,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     const [guess, setGuess] = useState('');
     const [timeLeft, setTimeLeft] = useState(0);
     const [showWrong, setShowWrong] = useState(false);
+    const [feedbackMessage, setFeedbackMessage] = useState(''); // ★ Local feedback
+    const [isFullscreen, setIsFullscreen] = useState(false); // ★ Fullscreen state
     const snapshotSentRef = useRef({ phase1: false, phase2: false, phase3: false });
 
     const teams = roomData.settings.teams || [];
@@ -760,6 +762,22 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         }
     };
 
+    // ★ Fullscreen Toggle
+    const toggleFullscreen = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(e => console.error(e));
+        } else {
+            document.exitFullscreen().then(() => setIsFullscreen(false)).catch(e => console.error(e));
+        }
+    };
+
+    // Listen to fullscreen change (hardware validation)
+    useEffect(() => {
+        const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
+        document.addEventListener('fullscreenchange', handleChange);
+        return () => document.removeEventListener('fullscreenchange', handleChange);
+    }, []);
+
 
 
     // 換下一題 (已修正為使用預先生成的 turnOrder)
@@ -834,7 +852,11 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
             setGuess('');
             // 錯誤提示
             setShowWrong(true);
-            setTimeout(() => setShowWrong(false), 1000);
+            setFeedbackMessage("❌ 答案錯誤"); // ★ Local feedback
+            setTimeout(() => {
+                setShowWrong(false);
+                setFeedbackMessage("");
+            }, 1000);
         }
     };
 
@@ -894,12 +916,19 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                             </span>
                             {!isDrawer && (
                                 <span className={`text-xs font-bold px-2 py-1 rounded ${isMyTeamDrawing ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                    {isMyTeamDrawing ? '隊友作畫' : '對手作畫'}
+                                    {isMyTeamDrawing
+                                        ? `隊友 ${roomData.players?.find(p => p.id === roomData.currentDrawerId)?.name || ''} 作畫`
+                                        : `對手 ${roomData.players?.find(p => p.id === roomData.currentDrawerId)?.name || ''} 作畫`}
                                 </span>
                             )}
                         </div>
-                        {/* Mobile Timer (Small) */}
-                        <div className="md:hidden font-mono font-bold text-xl">{timeLeft}s</div>
+                        {/* Mobile Timer & Fullscreen Toggle */}
+                        <div className="md:hidden flex items-center gap-3">
+                            <div className="font-mono font-bold text-xl">{timeLeft}s</div>
+                            <button onClick={toggleFullscreen} className="p-1 bg-slate-700 rounded text-slate-300">
+                                {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+                            </button>
+                        </div>
                     </div>
 
                     {/* Content Wrapper for Landscape Layout */}
@@ -923,7 +952,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                         min="2" max="20"
                                         value={strokeWidth}
                                         onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                                        className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer landscape:w-1 landscape:h-20 landscape:appearance-slider-vertical"
+                                        className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer landscape:w-20 landscape:h-1"
                                     />
                                 </div>
                                 <div className="flex gap-2 landscape:flex-col">
@@ -1011,8 +1040,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
                     {/* Chat / Interaction Panel */}
                     {!isDrawer && (
-                        <div className="flex-1 bg-slate-800 rounded-2xl p-4 shadow-lg flex flex-col min-h-[300px] md:min-h-0">
-                            <div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-1 text-sm text-slate-300">
+                        <div className="flex-1 bg-slate-800 rounded-2xl p-4 shadow-lg flex flex-col min-h-[150px] md:min-h-0">
+                            <div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-1 text-sm text-slate-300 relative">
                                 {/* Simple Placeholder for Chat Logic */}
                                 <div className="text-center opacity-30 py-4">
                                     遊戲聊天室
@@ -1021,6 +1050,9 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                     系統: 歡迎來到猜畫遊戲！
                                 </div>
                             </div>
+
+                            {/* ★ Feedback Message */}
+                            {feedbackMessage && <div className="text-red-400 font-bold text-center mb-2 animate-bounce text-sm">{feedbackMessage}</div>}
 
                             <div className="flex gap-2">
                                 <input
