@@ -1046,7 +1046,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         </div>
 
                         {/* --- Right Column (Info & Interaction) - md:col-span-1 --- */}
-                        <div className="bg-slate-800 rounded-2xl p-4 flex flex-col h-full max-h-[600px]">
+                        {/* Hidden in mobile landscape to give more space to canvas */}
+                        <div className="bg-slate-800 rounded-2xl p-4 flex flex-col h-full max-h-[600px] landscape:hidden md:!flex">
 
                             {isDrawer ? (
                                 /* Drawer View: Topic Card */
