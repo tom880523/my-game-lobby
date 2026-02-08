@@ -933,7 +933,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                     <div className="grid md:grid-cols-3 gap-4">
 
                         {/* --- Left Column (Canvas & Tools) - md:col-span-2 --- */}
-                        <div className="md:col-span-2 bg-slate-800 rounded-2xl p-2 md:p-4 flex flex-col landscape:flex-row md:!flex-col gap-4">
+                        <div className="md:col-span-2 bg-slate-800 rounded-2xl p-2 md:p-4 flex flex-col landscape:flex-row landscape:h-[calc(100dvh-2rem)] landscape:overflow-hidden md:!flex-col md:!h-auto md:!overflow-visible gap-4">
 
                             {/* Header: Phase & Status */}
                             <div className="flex justify-between items-center w-full landscape:hidden md:!flex">
@@ -1016,8 +1016,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                             )}
 
                             {/* Canvas Container */}
-                            {/* Mobile Portrait: aspect-video, centered | Mobile Landscape: h based on vw | Desktop: unchanged */}
-                            <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white w-full max-w-full aspect-video relative touch-none landscape:flex-1 landscape:aspect-auto landscape:h-[calc(100vw-6rem)] md:!aspect-video md:!h-auto md:!min-h-[500px] md:!max-h-none md:!flex-none">
+                            {/* Mobile Portrait: aspect-video | Mobile Landscape: flex-1 fills remaining | Desktop: min-h-500 */}
+                            <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white w-full aspect-video relative touch-none landscape:flex-1 landscape:aspect-auto landscape:w-auto landscape:min-h-0 md:!aspect-video md:!h-auto md:!min-h-[500px] md:!w-full md:!flex-none">
                                 {isDrawer ? (
                                     <ReactSketchCanvas
                                         ref={canvasRef}
