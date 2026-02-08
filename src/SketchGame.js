@@ -875,7 +875,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 text-white p-4 font-sans">
+        <div className="min-h-screen bg-slate-900 text-white p-2 md:p-4 font-sans">
             {/* ★★★ 過場彈窗 (roundResult) ★★★ */}
             {roomData.roundResult && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-in fade-in duration-300">
@@ -945,7 +945,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                         className="w-8 h-8 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0 shadow-sm hover:scale-110 transition"
                                     />
                                 </div>
-                                <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full landscape:flex-col landscape:py-3 landscape:px-1">
+                                <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full landscape:flex-col landscape:p-0 landscape:bg-transparent landscape:rounded-none">
                                     <div className="w-2 h-2 rounded-full bg-slate-400" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
                                     <input
                                         type="range"
@@ -1040,7 +1040,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
                     {/* Chat / Interaction Panel */}
                     {!isDrawer && (
-                        <div className="flex-1 bg-slate-800 rounded-2xl p-4 shadow-lg flex flex-col min-h-[150px] md:min-h-0">
+                        <div className="flex-1 bg-slate-800 rounded-2xl p-4 shadow-lg flex flex-col min-h-[150px] md:min-h-0 landscape:min-h-[120px]">
                             <div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-1 text-sm text-slate-300 relative">
                                 {/* Simple Placeholder for Chat Logic */}
                                 <div className="text-center opacity-30 py-4">
