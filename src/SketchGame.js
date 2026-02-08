@@ -878,9 +878,9 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
 
 
-            {/* 左側/上方：畫布區 */}
-            {/* Logic: Landscape=Full Height/Width-Auto | Desktop=Auto Height/Full Width/Aspect Video */}
-            <div className="flex-1 relative bg-gray-100 flex flex-col landscape:h-full md:h-auto md:flex-1 md:w-full min-h-0 p-2 md:p-8">
+            {/* 左側/上方 (Mobile/Desktop) or 左側 (Landscape)：畫布區 */}
+            {/* Logic: Landscape=Full Height | Desktop=Flex-1 (Bottom) | Mobile=Flex-1 (Top) */}
+            <div className="flex-1 relative bg-gray-100 flex flex-col landscape:h-full md:flex-1 md:w-full min-h-0 p-2 md:p-6 landscape:p-2">
                 {/* 顯示 Phase (左上角懸浮) */}
                 <div className="absolute top-4 left-4 z-10 pointer-events-none">
                     <span className={`px-2 py-1 rounded-lg text-xs font-bold shadow-md text-white ${roomData.phase === 1 ? 'bg-slate-500/80' : roomData.phase === 2 ? 'bg-blue-500/80' : 'bg-orange-500/80'}`}>
@@ -902,10 +902,10 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                             />
                         </div>
                     ) : (
-                        /* 猜題者視角 - 只有圖有白底/陰影 */
+                        /* 猜題者視角 - 只有圖有白底/陰影，等待時透明/深色 */
                         <div className="w-full h-full flex items-center justify-center">
                             {canSeeImage() && roomData.canvasImage ? (
-                                <img src={roomData.canvasImage} alt="Drawing" className="w-full h-full object-contain bg-white rounded-xl shadow-lg border border-slate-200" />
+                                <img src={roomData.canvasImage} alt="Drawing" className="max-w-full max-h-full object-contain bg-white rounded-xl shadow-lg border border-slate-200" />
                             ) : (
                                 <div className="text-center text-slate-400">
                                     <Palette size={48} className="mx-auto mb-2 opacity-50" />
@@ -919,34 +919,40 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 </div>
             </div>
 
-            {/* 右側/下方：工具欄 */}
-            {/* Logic: Default(Portrait)=Bottom | Landscape=Right | Desktop=Bottom */}
+            {/* 右側/下方 (Mobile/Desktop) or 右側 (Landscape)：工具欄 */}
+            {/* Logic: 
+                Mobile (col): Bottom, w-full
+                Landscape (row): Right, w-64, flex-col
+                Desktop (col-reverse): Top, flex-row
+            */}
             <div className="
-                flex flex-col gap-2 p-2 bg-slate-800 border-slate-700 overflow-y-auto z-20 shadow-xl
+                bg-slate-800 border-slate-700 p-2 gap-2 overflow-y-auto z-20 shadow-xl
+                flex flex-col
                 w-full h-auto border-t
                 landscape:w-64 landscape:h-full landscape:border-l landscape:border-t-0 landscape:shrink-0
-                md:w-full md:h-auto md:border-t md:border-l-0 md:shrink-0
+                md:w-full md:h-auto md:border-b md:border-t-0 md:flex-row md:items-center md:justify-center md:py-3 md:shrink-0
             ">
                 {/* 內部容器：處理排列方向 */}
-                <div className="flex flex-col landscape:flex-col md:flex-row md:items-center md:justify-between gap-4 h-full">
+                {/* Mobile/Landscape: flex-col, Desktop: flex-row */}
+                <div className="flex flex-col landscape:flex-col md:flex-row md:items-center md:justify-center gap-4 w-full h-full md:w-auto">
 
                     {/* 1. 資訊區 (題目/計時) */}
-                    <div className="flex landscape:flex-col md:flex-row items-center gap-4 landscape:gap-2 justify-between landscape:justify-center md:w-auto w-full shrink-0">
+                    <div className="flex landscape:flex-col md:flex-row items-center gap-4 landscape:gap-2 justify-between landscape:justify-center md:justify-start w-full landscape:w-full md:w-auto shrink-0">
                         {/* Timer & Round Info */}
                         <div className="text-center landscape:w-full md:text-left flex items-center gap-3 landscape:flex-col landscape:gap-0">
                             <div className={`font-mono font-bold text-3xl landscape:text-4xl md:text-3xl ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
                                 {timeLeft}s
                             </div>
-                            <div className="text-xs text-slate-400 landscape:mt-1">
+                            <div className="text-xs text-slate-400 landscape:mt-1 bg-slate-700/50 px-2 py-1 rounded-full">
                                 Round {roomData.currentRound}
                             </div>
                         </div>
 
-                        {/* Topic */}
-                        <div className="text-center landscape:w-full md:text-left">
-                            <div className="text-[10px] text-slate-400 hidden landscape:block">題目</div>
+                        {/* Topic - Desktop: Row, Landscape: Col */}
+                        <div className="text-center landscape:w-full md:text-left md:flex md:items-center md:gap-2">
+                            <div className="text-[10px] text-slate-400 hidden landscape:block md:hidden">題目</div>
                             {isDrawer ? (
-                                <div className="text-xl landscape:text-lg md:text-xl font-bold text-pink-400 break-all">{roomData.currentWord}</div>
+                                <div className="text-xl landscape:text-lg md:text-2xl font-bold text-pink-400 break-all bg-pink-500/10 px-3 py-1 rounded-lg border border-pink-500/20">{roomData.currentWord}</div>
                             ) : (
                                 <div className="text-sm font-bold text-slate-300">
                                     {canSeeImage() ? '猜猜看是什麼？' : '準備中...'}
@@ -1010,9 +1016,9 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                             </div>
                         ) : (
                             /* 猜題區 */
-                            <div className="w-full flex flex-col landscape:flex-col md:flex-row gap-2 h-full landscape:max-h-[300px] overflow-hidden">
+                            <div className="w-full flex flex-col landscape:flex-col md:flex-row gap-2 h-full justify-center landscape:max-h-[300px] overflow-hidden">
                                 {/* 聊天/訊息區 - Mobile/Landscape: Scrollable Box, Desktop: Compact Line? */}
-                                <div className="flex-1 bg-slate-900/50 rounded-xl p-2 overflow-y-auto text-sm min-h-[60px] landscape:min-h-[100px] md:h-10 md:min-h-0 md:bg-transparent md:flex md:items-center">
+                                <div className="flex-1 bg-slate-900/50 rounded-xl p-2 overflow-y-auto text-sm min-h-[60px] landscape:min-h-[100px] md:h-auto md:min-h-0 md:bg-transparent md:flex md:items-center md:justify-end md:p-0">
                                     <div className="text-slate-400 text-xs md:text-sm md:mr-2 truncate">
                                         {isMyTeamDrawing ? '提示: 這是你的隊友！' : '提示: 這是對手！'}
                                     </div>
@@ -1038,9 +1044,9 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                     </div>
 
                     {/* 3. 分數 (Desktop: Right, Landscape: Bottom) */}
-                    <div className="flex landscape:grid landscape:grid-cols-2 md:flex-col gap-2 shrink-0 landscape:w-full md:w-auto overflow-x-auto p-1">
+                    <div className="flex landscape:grid landscape:grid-cols-2 md:flex-row gap-2 shrink-0 landscape:w-full md:w-auto overflow-x-auto p-1 bg-slate-900/30 rounded-lg md:bg-transparent">
                         {teams.map(t => (
-                            <div key={t.id} className="flex items-center gap-2 bg-slate-700/30 px-2 py-1 rounded md:justify-end">
+                            <div key={t.id} className="flex items-center gap-2 bg-slate-700/50 px-2 py-1 rounded md:justify-end md:bg-slate-800">
                                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
                                 <span className="text-xs text-slate-300 md:hidden landscape:inline">{t.name}</span>
                                 <span className="font-bold text-sm text-white">{scores[t.id] || 0}</span>
