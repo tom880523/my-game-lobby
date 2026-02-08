@@ -875,8 +875,8 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 </div>
             )}
 
-            {/* 頂部資訊 - 手機版隱藏，電腦版顯示 */}
-            <div className="hidden md:flex justify-between items-center mb-4 shrink-0">
+            {/* 頂部資訊 - 電腦版顯示 (包含計時器) */}
+            <div className="hidden md:flex justify-between items-center mb-4 shrink-0 bg-slate-800/50 p-2 rounded-xl">
                 <div className="flex items-center gap-4">
                     {teams.map(t => (
                         <div key={t.id} className={`px-4 py-2 rounded-xl ${t.id === roomData.currentTeamId ? 'ring-2 ring-white' : ''}`} style={{ backgroundColor: `${t.color}40` }}>
@@ -885,6 +885,17 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         </div>
                     ))}
                 </div>
+
+                {/* Desktop Timer & Phase Info */}
+                <div className="flex items-center gap-4">
+                    <span className={`px-3 py-1 rounded-full text-sm font-bold ${roomData.phase === 1 ? 'bg-slate-500' : roomData.phase === 2 ? 'bg-blue-500' : 'bg-orange-500'}`}>
+                        Phase {roomData.phase}
+                    </span>
+                    <div className={`text-3xl font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : ''}`}>
+                        {timeLeft}s
+                    </div>
+                </div>
+
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-xl">
                         <span className="text-slate-400">第</span>
@@ -953,12 +964,25 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                     <div className="
                         shrink-0 
                         flex flex-row flex-wrap items-center justify-center gap-3 p-2
-                        landscape:flex-col landscape:w-24 landscape:h-full landscape:justify-start landscape:border-l landscape:border-slate-700 landscape:pl-4 landscape:py-4 landscape:space-y-4 landscape:overflow-y-auto
+                        landscape:flex-col landscape:w-24 landscape:h-full landscape:justify-start landscape:border-l landscape:border-slate-700 landscape:pl-4 landscape:py-4 landscape:space-y-4 landscape:overflow-y-auto landscape:bg-slate-800/50 landscape:rounded-xl
                     ">
-                        {/* 題目 (Landscape 顯示在側邊, Portrait 顯示在工具列上方) */}
-                        <div className="w-full text-center mb-2 landscape:mb-0">
-                            <div className="text-[10px] text-slate-400 block mb-1">題目</div>
-                            <div className="text-2xl font-bold text-pink-400 break-words leading-tight">{roomData.currentWord}</div>
+
+                        {/* 題目 & 計時器 (Landscape) */}
+                        <div className="hidden landscape:flex flex-col items-center w-full mb-2 border-b border-slate-700 pb-2">
+                            {/* Timer */}
+                            <div className={`text-xl font-mono font-bold mb-1 ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                                {timeLeft}s
+                            </div>
+
+                            {/* Topic */}
+                            <div className="text-[10px] text-slate-400">題目</div>
+                            <div className="text-sm font-bold text-pink-400 break-all text-center leading-tight">{roomData.currentWord}</div>
+                        </div>
+
+                        {/* 手機版直向題目 (Portrait) */}
+                        <div className="landscape:hidden w-full text-center mb-2">
+                            <span className="text-slate-400 text-xs mr-2">題目:</span>
+                            <span className="text-xl font-bold text-pink-400">{roomData.currentWord}</span>
                         </div>
 
                         {/* 手機版直向提示 (Landscape 隱藏) */}
@@ -1002,7 +1026,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 min="2" max="20"
                                 value={strokeWidth}
                                 onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                                className="w-24 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer landscape:w-20 landscape:h-1 landscape:rotate-180" // Simple horizontal slider stack
+                                className="w-24 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer landscape:w-20 landscape:h-1 landscape:rotate-180 landscape:mt-2"
                             />
                         </div>
                     </div>
@@ -1015,8 +1039,14 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         h-[200px] md:h-full md:max-h-[600px]
                         landscape:w-1/3 landscape:h-full landscape:max-h-full
                     ">
-                        <h3 className="font-bold text-lg mb-2 text-center md:text-left">
-                            {isDrawer ? '等待隊友猜題' : '輸入答案'}
+                        {/* Desktop/Landscape Guesser Timer (Since Top Bar might be minimal or we want emphasis) */}
+                        <div className="md:hidden landscape:flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                            <span className="text-xs text-slate-400">剩餘時間</span>
+                            <span className={`font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{timeLeft}s</span>
+                        </div>
+
+                        <h3 className="font-bold text-lg mb-2 text-center md:text-left flex justify-between items-center">
+                            <span>{isDrawer ? '等待隊友猜題' : '輸入答案'}</span>
                         </h3>
 
                         {/* 訊息區 */}
