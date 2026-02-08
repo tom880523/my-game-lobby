@@ -400,24 +400,62 @@ function SketchRoomView({ roomData, isHost, isAdmin, roomId, currentUser, getCur
         const shuffledWords = finalWords.sort(() => 0.5 - Math.random());
         const initialScores = {}; teams.forEach(t => initialScores[t.id] = 0);
 
-        // 建立輪替順序
-        const turnOrder = {};
+        // ★★★ 獨立雙指針 (Independent Two-Pointers) 生成回合表 ★★★
+        const turnOrder = [];
+        const teamPlayers = {};
+        const cursors = {};
+
+        // 1. 準備資料
         teams.forEach(team => {
-            turnOrder[team.id] = players.filter(p => p.team === team.id).map(p => p.id).sort(() => 0.5 - Math.random());
+            // 取得該隊成員並隨機排序
+            const members = players.filter(p => p.team === team.id).map(p => p.id).sort(() => 0.5 - Math.random());
+            if (members.length > 0) {
+                teamPlayers[team.id] = members;
+                cursors[team.id] = 0; // 設定獨立指針
+            }
         });
 
-        const firstTeam = teams[0];
-        const firstDrawer = turnOrder[firstTeam.id]?.[0] || null;
+        // 2. 生成迴圈
+        const totalRounds = roomData.settings.totalRounds || 5;
+        // 總共的回合數 = 設定的輪數 * 隊伍數 (例如 5輪 * 2隊 = 10個回合)
+        // 但這裡我們用迴圈生成 schedule，每一個 item 代表這回合是誰畫
+
+        for (let i = 0; i < totalRounds; i++) {
+            // 依序讓每一隊派人出來
+            for (const team of teams) {
+                const members = teamPlayers[team.id];
+                if (!members || members.length === 0) continue; // 該隊沒人，跳過
+
+                const cursor = cursors[team.id];
+                const drawerId = members[cursor % members.length]; // 取餘數，確保無限循環
+
+                turnOrder.push({
+                    teamId: team.id,
+                    drawerId: drawerId,
+                    roundIndex: i + 1 // 這是第幾輪
+                });
+
+                // 關鍵動作：將對應的指針遞增
+                cursors[team.id]++;
+            }
+        }
+
+        if (turnOrder.length === 0) return alert("沒有足夠的玩家！");
+
+        const firstTurn = turnOrder[0];
         const now = getCurrentTime();
 
-        console.log('[SketchGame] 開始遊戲, 第一隊:', firstTeam.id, '第一位畫手:', firstDrawer);
+        console.log('[SketchGame] 開始遊戲, 排程:', turnOrder);
 
         await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
             status: 'playing', wordQueue: shuffledWords.slice(1), scores: initialScores,
-            currentRound: 1, currentTeamId: firstTeam.id, currentDrawerId: firstDrawer,
+            currentRound: 1,
+            currentTeamId: firstTurn.teamId,
+            currentDrawerId: firstTurn.drawerId,
             currentWord: shuffledWords[0], phase: 1, phaseEndTime: now + roomData.settings.phase1Time * 1000,
-            canvasImage: null, canvasVisibility: 'drawer', turnOrder, drawerIndices: { [firstTeam.id]: 0 },
-            roundResult: null  // ★ 強制重置，避免舊資料干擾
+            canvasImage: null, canvasVisibility: 'drawer',
+            turnOrder: turnOrder, // ★ 儲存完整的排程表
+            roundResult: null
         });
     };
 
@@ -724,41 +762,41 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
 
 
 
-    // 換下一題
+    // 換下一題 (已修正為使用預先生成的 turnOrder)
     const nextRound = async (correct, answerTeamId = null) => {
         const newQueue = [...(roomData.wordQueue || [])];
         const nextWord = newQueue.shift();
 
-        if (!nextWord || roomData.currentRound >= roomData.settings.totalRounds * teams.length) {
+        // turnOrder 是一個長度為 (TotalRounds * Teams) 的陣列
+        // roomData.currentRound 目前是 1，下一局就是 2
+        // 因為是 0-based index，所以 index = currentRound (因為 currentRound 代表已經玩了幾回合)
+        // 例如：現在第1局結束，currentRound=1，下一局是第2局，在 array 中的 index 為 1
+
+        const nextRoundIndex = roomData.currentRound;
+        const nextTurnInfo = roomData.turnOrder && roomData.turnOrder[nextRoundIndex];
+
+        if (!nextWord || !nextTurnInfo) {
+            // 沒有題目或沒有下一局排程了 => 結束
             await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), { status: 'finished' });
             return;
         }
-
-        // 換隊伍
-        const currentIdx = teams.findIndex(t => t.id === roomData.currentTeamId);
-        const nextTeamIdx = (currentIdx + 1) % teams.length;
-        const nextTeam = teams[nextTeamIdx];
-
-        // 換繪圖者
-        const turnOrder = roomData.turnOrder || {};
-        const drawerIndices = roomData.drawerIndices || {};
-        const nextDrawerIdx = ((drawerIndices[nextTeam.id] || 0) + (nextTeamIdx === 0 ? 1 : 0)) % (turnOrder[nextTeam.id]?.length || 1);
-        const nextDrawer = turnOrder[nextTeam.id]?.[nextDrawerIdx] || null;
 
         const now = getCurrentTime();
 
         await updateDoc(doc(db, 'sketch_rooms', `sketch_room_${roomId}`), {
             wordQueue: newQueue,
             currentRound: roomData.currentRound + 1,
-            currentTeamId: nextTeam.id,
-            currentDrawerId: nextDrawer,
+
+            // ★ 直接使用預先排好的資訊
+            currentTeamId: nextTurnInfo.teamId,
+            currentDrawerId: nextTurnInfo.drawerId,
+
             currentWord: nextWord,
             phase: 1,
             phaseEndTime: now + roomData.settings.phase1Time * 1000,
             canvasImage: null,  // ★ 清除上一局圖片資料
             canvasVisibility: 'drawer',
             roundResult: null,  // 清除過場資料
-            [`drawerIndices.${nextTeam.id}`]: nextDrawerIdx
         });
     };
 
@@ -815,7 +853,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
     };
 
     return (
-        <div className="flex-1 p-4 text-white relative">
+        <div className="flex-1 p-2 md:p-4 text-white relative flex flex-col h-[calc(100vh-60px)]">
             {/* ★★★ 過場彈窗 (roundResult) ★★★ */}
             {roomData.roundResult && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-in fade-in duration-300">
@@ -838,7 +876,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
             )}
 
             {/* 頂部資訊 - 手機版隱藏，電腦版顯示 */}
-            <div className="hidden md:flex justify-between items-center mb-4">
+            <div className="hidden md:flex justify-between items-center mb-4 shrink-0">
                 <div className="flex items-center gap-4">
                     {teams.map(t => (
                         <div key={t.id} className={`px-4 py-2 rounded-xl ${t.id === roomData.currentTeamId ? 'ring-2 ring-white' : ''}`} style={{ backgroundColor: `${t.color}40` }}>
@@ -861,178 +899,160 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                 </div>
             </div>
 
-            {/* 主遊戲區域 */}
-            <div className="grid md:grid-cols-3 gap-4">
-                {/* 畫布/圖片區 */}
-                <div className="md:col-span-2 bg-slate-800 rounded-2xl p-4">
-                    {/* 倒數計時 */}
-                    <div className="flex justify-between items-center mb-4">
-                        {/* 手機版簡化計時器 */}
-                        <div className="md:hidden flex items-center justify-between w-full">
-                            <div className="flex items-center gap-2">
-                                <span className={`px-2 py-1 rounded-lg text-xs font-bold ${roomData.phase === 1 ? 'bg-slate-500' : roomData.phase === 2 ? 'bg-blue-500' : 'bg-orange-500'}`}>
-                                    P{roomData.phase}
-                                </span>
-                                {isDrawer && <span className="text-pink-400 font-bold truncate max-w-[120px]">{roomData.currentWord}</span>}
-                            </div>
-                            <div className={`text-2xl font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : ''}`}>
-                                {timeLeft}
-                            </div>
-                        </div>
+            {/* 主遊戲區域 - 響應式佈局 */}
+            <div className="flex-1 flex flex-col landscape:flex-row gap-4 h-full relative min-h-0">
 
-                        {/* 電腦版完整計時器 */}
-                        <div className="hidden md:flex items-center gap-2">
-                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${roomData.phase === 1 ? 'bg-slate-500' : roomData.phase === 2 ? 'bg-blue-500' : 'bg-orange-500'}`}>
-                                Phase {roomData.phase}
+                {/* 左側：畫布/圖片區 */}
+                <div className="flex-1 relative flex flex-col min-h-0">
+
+                    {/* 手機版頂部資訊 (Timer) */}
+                    <div className="md:hidden flex justify-between items-center mb-2 shrink-0">
+                        <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded-lg text-xs font-bold ${roomData.phase === 1 ? 'bg-slate-500' : roomData.phase === 2 ? 'bg-blue-500' : 'bg-orange-500'}`}>
+                                P{roomData.phase}
                             </span>
-                            <span className="text-slate-400">
-                                {roomData.phase === 1 ? '繪圖中...' : roomData.phase === 2 ? '隊友猜題中' : '全員搶答！'}
-                            </span>
+                            {/* 這是給觀戰者看的，繪圖者的題目會顯示在 SideBar */}
+                            {!isDrawer && <span className="text-slate-400 text-xs truncate max-w-[120px]">{isMyTeamDrawing ? '隊友作畫' : '對手作畫'}</span>}
                         </div>
-                        <div className={`hidden md:block text-3xl font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : ''}`}>
-                            {timeLeft}s
+                        <div className={`text-2xl font-mono font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : ''}`}>
+                            {timeLeft}
                         </div>
                     </div>
 
-                    {/* 繪圖者視角 */}
-                    {isDrawer && (
-                        <>
-                            {/* 題目顯示 + 換題按鈕 */}
-                            <div className="md:flex items-center justify-center gap-3 mb-4 hidden">
-                                <span className="text-slate-400">你的題目：</span>
-                                <span className="text-2xl font-bold text-pink-400">{roomData.currentWord}</span>
-                            </div>
-
-                            {/* 手機版橫放提示 */}
-                            <div className="md:hidden text-center text-xs text-yellow-400 mb-2 animate-pulse">
-                                📱 請將手機橫放以獲得最佳作畫體驗
-                            </div>
-
-                            {/* 工具列 */}
-                            <div className="flex justify-center gap-3 mb-4 flex-wrap items-center">
-                                {/* Color Picker */}
-                                <div className="relative group">
-                                    <input
-                                        type="color"
-                                        value={brushColor}
-                                        onChange={(e) => { setBrushColor(e.target.value); setIsEraser(false); }}
-                                        className="w-10 h-10 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0"
-                                    />
-                                </div>
-
-                                <button
-                                    onClick={() => setIsEraser(!isEraser)}
-                                    className={`p-2 rounded-lg transition ${isEraser ? 'bg-pink-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                                    title="橡皮擦"
-                                >
-                                    <Eraser size={20} />
-                                </button>
-
-                                <button
-                                    onClick={handleUndo}
-                                    className="p-2 bg-slate-700 text-slate-300 hover:bg-slate-600 rounded-lg hover:text-white transition"
-                                    title="復原上一步"
-                                >
-                                    <RotateCcw size={20} />
-                                </button>
-
-                                {/* 筆刷粗細滑桿 */}
-                                <div className="flex items-center gap-2 px-3 border-l border-slate-600 ml-2">
-                                    <div className="w-2 h-2 rounded-full bg-slate-400 transition-all" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
-                                    <input
-                                        type="range"
-                                        min="2" max="20"
-                                        value={strokeWidth}
-                                        onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                                        className="w-24 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Canvas - 改為 Aspect Video (16:9) + ReactSketchCanvas */}
-                            <div className="border-2 border-slate-600 rounded-xl overflow-hidden bg-white w-full aspect-video relative touch-none">
-                                <ReactSketchCanvas
-                                    ref={canvasRef}
-                                    strokeWidth={strokeWidth}
-                                    strokeColor={isEraser ? "#FFFFFF" : brushColor}
-                                    canvasColor="transparent"
-                                    className="w-full h-full"
-                                />
-                            </div>
-                        </>
-                    )}
-
-                    {/* 猜題者視角 */}
-                    {!isDrawer && (
-                        <div className="flex items-center justify-center min-h-[300px] md:min-h-[400px]">
-                            {canSeeImage() && roomData.canvasImage ? (
-                                <img src={roomData.canvasImage} alt="Drawing" className="w-full aspect-video object-contain rounded-xl bg-white" />
-                            ) : (
-                                <div className="text-center text-slate-400">
-                                    <Palette size={64} className="mx-auto mb-4 opacity-50" />
-                                    <div className="text-xl font-bold mb-2">
-                                        {isMyTeamDrawing ? '等待隊友作畫...' : '等待對手作畫...'}
+                    {/* Canvas Container */}
+                    <div className="flex-1 relative border-2 border-slate-600 rounded-xl overflow-hidden bg-white touch-none shadow-lg w-full landscape:h-full">
+                        {/* 繪圖者視角 */}
+                        {isDrawer ? (
+                            <ReactSketchCanvas
+                                ref={canvasRef}
+                                strokeWidth={strokeWidth}
+                                strokeColor={isEraser ? "#FFFFFF" : brushColor}
+                                canvasColor="transparent"
+                                className="w-full h-full"
+                            />
+                        ) : (
+                            /* 猜題者視角 (圖片) */
+                            <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                                {canSeeImage() && roomData.canvasImage ? (
+                                    <img src={roomData.canvasImage} alt="Drawing" className="w-full h-full object-contain" />
+                                ) : (
+                                    <div className="text-center text-slate-400">
+                                        <Palette size={48} className="mx-auto mb-2 opacity-50" />
+                                        <div className="text-lg font-bold">
+                                            {isMyTeamDrawing ? '等待隊友作畫...' : '等待對手作畫...'}
+                                        </div>
                                     </div>
-                                    <div className="text-sm">
-                                        {roomData.phase === 1 ? (
-                                            isMyTeamDrawing ? `${drawerName} 正在構思...` : '敵方正在傳遞暗號...'
-                                        ) : (
-                                            '圖片即將揭曉'
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                {/* 右側：答案輸入/狀態 */}
-                <div className="bg-slate-800 rounded-2xl p-4 flex flex-col h-full max-h-[600px]">
-                    <h3 className="font-bold text-lg mb-4">
-                        {isDrawer ? '等待隊友猜題' : '輸入答案'}
-                    </h3>
+                {/* 右側：工具欄 / 側邊攔 (Landscape) */}
+                {isDrawer && (
+                    <div className="
+                        shrink-0 
+                        flex flex-row flex-wrap items-center justify-center gap-3 p-2
+                        landscape:flex-col landscape:w-24 landscape:h-full landscape:justify-start landscape:border-l landscape:border-slate-700 landscape:pl-4 landscape:py-4 landscape:space-y-4 landscape:overflow-y-auto
+                    ">
+                        {/* 題目 (Landscape 顯示在側邊, Portrait 顯示在工具列上方) */}
+                        <div className="w-full text-center mb-2 landscape:mb-0">
+                            <div className="text-[10px] text-slate-400 block mb-1">題目</div>
+                            <div className="text-2xl font-bold text-pink-400 break-words leading-tight">{roomData.currentWord}</div>
+                        </div>
 
-                    <div className="flex-1 bg-slate-900 rounded-xl p-3 mb-4 overflow-y-auto">
-                        <div className="text-center text-slate-500 text-sm h-full flex items-center justify-center flex-col">
-                            {isDrawer ? (
-                                <div className="space-y-4">
-                                    <p>你是繪圖者</p>
-                                    <div className="p-4 bg-slate-800 rounded-xl border border-pink-500/30">
-                                        <p className="text-xs text-slate-400 mb-1">本題題目</p>
-                                        <p className="text-3xl font-bold text-pink-400">{roomData.currentWord}</p>
-                                    </div>
-                                    <p className="text-xs text-slate-500">盡力畫出特徵讓隊友猜到！</p>
-                                </div>
-                            ) : canSeeImage() ? (
-                                <p>輸入你的答案！</p>
-                            ) : (
-                                <p>等待圖片...</p>
-                            )}
+                        {/* 手機版直向提示 (Landscape 隱藏) */}
+                        <div className="w-full text-center text-xs text-yellow-400 mb-2 animate-pulse landscape:hidden">
+                            📱 轉向手機以獲得最佳體驗
+                        </div>
+
+                        {/* Color Picker */}
+                        <div className="relative group">
+                            <input
+                                type="color"
+                                value={brushColor}
+                                onChange={(e) => { setBrushColor(e.target.value); setIsEraser(false); }}
+                                className="w-10 h-10 landscape:w-12 landscape:h-12 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0 shadow-lg hover:scale-110 transition"
+                            />
+                        </div>
+
+                        {/* Eraser */}
+                        <button
+                            onClick={() => setIsEraser(!isEraser)}
+                            className={`w-10 h-10 landscape:w-12 landscape:h-12 rounded-full flex items-center justify-center transition shadow-lg ${isEraser ? 'bg-pink-500 text-white ring-2 ring-offset-2 ring-pink-500' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                            title="橡皮擦"
+                        >
+                            <Eraser size={20} />
+                        </button>
+
+                        {/* Undo */}
+                        <button
+                            onClick={handleUndo}
+                            className="w-10 h-10 landscape:w-12 landscape:h-12 rounded-full bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white flex items-center justify-center transition shadow-lg active:scale-95"
+                            title="復原上一步"
+                        >
+                            <RotateCcw size={20} />
+                        </button>
+
+                        {/* 筆刷粗細滑桿 */}
+                        <div className="flex items-center gap-2 px-3 border-l border-slate-600 landscape:border-l-0 landscape:border-t landscape:pt-4 landscape:flex-col landscape:w-full">
+                            <div className="w-2 h-2 rounded-full bg-slate-400 transition-all" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
+                            <input
+                                type="range"
+                                min="2" max="20"
+                                value={strokeWidth}
+                                onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
+                                className="w-24 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer landscape:w-20 landscape:h-1 landscape:rotate-180" // Simple horizontal slider stack
+                            />
                         </div>
                     </div>
+                )}
 
-                    {!isDrawer && canSeeImage() && (
-                        <div className="space-y-2">
-                            <div className="flex gap-2">
-                                <input
-                                    value={guess}
-                                    onChange={e => setGuess(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && submitGuess()}
-                                    className={`flex-1 bg-slate-700 border px-4 py-3 rounded-xl text-white transition-all ${showWrong ? 'border-red-500 animate-pulse bg-red-500/20' : 'border-slate-600'}`}
-                                    placeholder="輸入答案..."
-                                    disabled={!!roomData.roundResult}
-                                />
-                                <button onClick={submitGuess} disabled={!!roomData.roundResult} className="bg-pink-500 hover:bg-pink-600 disabled:opacity-50 px-6 rounded-xl font-bold">送出</button>
+                {/* 猜題者輸入區 (Landscape: 放在右側, Portrait: 放在下方) */}
+                {!isDrawer && (
+                    <div className="
+                        bg-slate-800 rounded-2xl p-4 flex flex-col 
+                        h-[200px] md:h-full md:max-h-[600px]
+                        landscape:w-1/3 landscape:h-full landscape:max-h-full
+                    ">
+                        <h3 className="font-bold text-lg mb-2 text-center md:text-left">
+                            {isDrawer ? '等待隊友猜題' : '輸入答案'}
+                        </h3>
+
+                        {/* 訊息區 */}
+                        <div className="flex-1 bg-slate-900 rounded-xl p-3 mb-2 overflow-y-auto min-h-0">
+                            <div className="text-center text-slate-500 text-sm h-full flex items-center justify-center flex-col">
+                                {canSeeImage() ? (
+                                    <p>輸入你的答案！</p>
+                                ) : (
+                                    <p>等待圖片...</p>
+                                )}
                             </div>
-                            {/* ★★★ 錯誤提示文字 ★★★ */}
-                            {showWrong && (
-                                <div className="text-red-500 font-bold text-sm animate-bounce flex items-center justify-center gap-1">
-                                    <X size={16} /> 答案不正確，請再試一次
-                                </div>
-                            )}
                         </div>
-                    )}
-                </div>
+
+                        {/* 輸入框 */}
+                        {canSeeImage() && (
+                            <div className="space-y-2 shrink-0">
+                                <div className="flex gap-2">
+                                    <input
+                                        value={guess}
+                                        onChange={e => setGuess(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && submitGuess()}
+                                        className={`flex-1 bg-slate-700 border px-3 py-2 rounded-xl text-white transition-all text-sm ${showWrong ? 'border-red-500 animate-pulse bg-red-500/20' : 'border-slate-600'}`}
+                                        placeholder="輸入答案..."
+                                        disabled={!!roomData.roundResult}
+                                    />
+                                    <button onClick={submitGuess} disabled={!!roomData.roundResult} className="bg-pink-500 hover:bg-pink-600 disabled:opacity-50 px-4 rounded-xl font-bold text-sm">送出</button>
+                                </div>
+                                {showWrong && (
+                                    <div className="text-red-500 font-bold text-xs animate-bounce flex items-center justify-center gap-1">
+                                        <X size={12} /> 錯誤
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
