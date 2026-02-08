@@ -902,71 +902,75 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                         <div className="md:hidden font-mono font-bold text-xl">{timeLeft}s</div>
                     </div>
 
-                    {/* Tools Row (Drawer Only) */}
-                    {isDrawer && (
-                        <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-800 rounded-xl p-2 shadow-md">
-                            <div className="relative group">
-                                <input
-                                    type="color"
-                                    value={brushColor}
-                                    onChange={(e) => { setBrushColor(e.target.value); setIsEraser(false); }}
-                                    className="w-8 h-8 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0 shadow-sm hover:scale-110 transition"
-                                />
-                            </div>
-                            <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full">
-                                <div className="w-2 h-2 rounded-full bg-slate-400" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
-                                <input
-                                    type="range"
-                                    min="2" max="20"
-                                    value={strokeWidth}
-                                    onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                                    className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
-                                />
-                            </div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setIsEraser(!isEraser)}
-                                    className={`p-2 rounded-full transition shadow-sm ${isEraser ? 'bg-pink-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                                    title="橡皮擦"
-                                >
-                                    <Eraser size={18} />
-                                </button>
-                                <button
-                                    onClick={handleUndo}
-                                    className="p-2 rounded-full bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition shadow-sm active:scale-95"
-                                    title="復原"
-                                >
-                                    <RotateCcw size={18} />
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                    {/* Content Wrapper for Landscape Layout */}
+                    <div className="flex flex-col landscape:flex-row gap-4">
 
-                    {/* Canvas / Image Container */}
-                    <div className="aspect-video w-full bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center">
-                        {isDrawer ? (
-                            <ReactSketchCanvas
-                                ref={canvasRef}
-                                strokeWidth={strokeWidth}
-                                strokeColor={isEraser ? "#FFFFFF" : brushColor}
-                                canvasColor="transparent"
-                                className="w-full h-full"
-                            />
-                        ) : (
-                            /* Guesser View */
-                            <div className="w-full h-full flex items-center justify-center bg-slate-100/5">
-                                {canSeeImage() && roomData.canvasImage ? (
-                                    <img src={roomData.canvasImage} alt="Drawing" className="w-full h-full object-contain bg-white" />
-                                ) : (
-                                    <div className="text-center text-slate-500">
-                                        <Palette size={48} className="mx-auto mb-2 opacity-30" />
-                                        <div className="text-lg font-bold opacity-50">
-                                            {isMyTeamDrawing ? '等待隊友作畫...' : '等待對手作畫...'}
-                                        </div>
-                                    </div>
-                                )}
+                        {/* Tools Row (Drawer Only) - Landscape: Right Column */}
+                        {isDrawer && (
+                            <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-800 rounded-xl p-2 shadow-md landscape:flex-col landscape:w-16 landscape:order-last">
+                                <div className="relative group">
+                                    <input
+                                        type="color"
+                                        value={brushColor}
+                                        onChange={(e) => { setBrushColor(e.target.value); setIsEraser(false); }}
+                                        className="w-8 h-8 rounded-full border-2 border-white cursor-pointer overflow-hidden p-0 shadow-sm hover:scale-110 transition"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full landscape:flex-col landscape:py-3 landscape:px-1">
+                                    <div className="w-2 h-2 rounded-full bg-slate-400" style={{ transform: `scale(${strokeWidth / 4})`, backgroundColor: isEraser ? '#fff' : brushColor }} />
+                                    <input
+                                        type="range"
+                                        min="2" max="20"
+                                        value={strokeWidth}
+                                        onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
+                                        className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer landscape:w-1 landscape:h-20 landscape:appearance-slider-vertical"
+                                    />
+                                </div>
+                                <div className="flex gap-2 landscape:flex-col">
+                                    <button
+                                        onClick={() => setIsEraser(!isEraser)}
+                                        className={`p-2 rounded-full transition shadow-sm ${isEraser ? 'bg-pink-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                                        title="橡皮擦"
+                                    >
+                                        <Eraser size={18} />
+                                    </button>
+                                    <button
+                                        onClick={handleUndo}
+                                        className="p-2 rounded-full bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition shadow-sm active:scale-95"
+                                        title="復原"
+                                    >
+                                        <RotateCcw size={18} />
+                                    </button>
+                                </div>
                             </div>
                         )}
+
+                        {/* Canvas / Image Container - Landscape: Main Area */}
+                        <div className="aspect-video w-full bg-white rounded-xl shadow-lg border-2 border-slate-700 relative overflow-hidden touch-none flex items-center justify-center landscape:flex-1">
+                            {isDrawer ? (
+                                <ReactSketchCanvas
+                                    ref={canvasRef}
+                                    strokeWidth={strokeWidth}
+                                    strokeColor={isEraser ? "#FFFFFF" : brushColor}
+                                    canvasColor="transparent"
+                                    className="w-full h-full"
+                                />
+                            ) : (
+                                /* Guesser View */
+                                <div className="w-full h-full flex items-center justify-center bg-slate-100/5">
+                                    {canSeeImage() && roomData.canvasImage ? (
+                                        <img src={roomData.canvasImage} alt="Drawing" className="w-full h-full object-contain bg-white" />
+                                    ) : (
+                                        <div className="text-center text-slate-500">
+                                            <Palette size={48} className="mx-auto mb-2 opacity-30" />
+                                            <div className="text-lg font-bold opacity-50">
+                                                {isMyTeamDrawing ? '等待隊友作畫...' : '等待對手作畫...'}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -1013,7 +1017,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                 <div className="text-center opacity-30 py-4">
                                     遊戲聊天室
                                 </div>
-                                <div className="p-2 bg-slate-700/50 rounded text-xs">
+                                <div className="p-2 bg-slate-700/50 rounded text-xs text-slate-300">
                                     系統: 歡迎來到猜畫遊戲！
                                 </div>
                             </div>
@@ -1023,14 +1027,18 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
                                     value={guess}
                                     onChange={e => setGuess(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && submitGuess()}
-                                    className={`flex-1 bg-slate-700 border-2 px-3 py-2 rounded-xl text-white outline-none ${showWrong ? 'border-red-500 animate-pulse' : 'border-slate-600 focus:border-blue-400'}`}
-                                    placeholder="輸入答案..."
-                                    disabled={!!roomData.roundResult}
+                                    className={`flex-1 bg-slate-700 border-2 px-3 py-2 rounded-xl text-white outline-none ${showWrong ? 'border-red-500 animate-pulse' : 'border-slate-600 focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                                    placeholder={
+                                        roomData.phase === 1 ? "繪圖中... (Phase 1)" :
+                                            roomData.phase === 2 ? (isMyTeamDrawing ? "快猜！(僅隊友可見)" : "等待隊友作畫結束...") :
+                                                "搶答！"
+                                    }
+                                    disabled={!!roomData.roundResult || roomData.phase === 1 || (roomData.phase === 2 && !isMyTeamDrawing)}
                                 />
                                 <button
                                     onClick={submitGuess}
-                                    disabled={!!roomData.roundResult}
-                                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 rounded-xl font-bold transition shadow-md"
+                                    disabled={!!roomData.roundResult || roomData.phase === 1 || (roomData.phase === 2 && !isMyTeamDrawing)}
+                                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 rounded-xl font-bold transition shadow-md whitespace-nowrap"
                                 >
                                     送出
                                 </button>
