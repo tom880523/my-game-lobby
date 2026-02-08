@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS = {
     permissions: { allowPlayerAddWords: false }
 };
 
-const BRUSH_COLORS = ['#000000', '#ef4444', '#3b82f6', '#22c55e', '#f59e0b'];
+
 const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 const generateId = () => Math.random().toString(36).substring(2, 10);
 
@@ -722,11 +722,7 @@ function SketchGameInterface({ roomData, isHost, roomId, currentUser, getCurrent
         }
     };
 
-    const handleClear = () => {
-        if (canvasRef.current) {
-            canvasRef.current.clearCanvas();
-        }
-    };
+
 
     // 換下一題
     const nextRound = async (correct, answerTeamId = null) => {
